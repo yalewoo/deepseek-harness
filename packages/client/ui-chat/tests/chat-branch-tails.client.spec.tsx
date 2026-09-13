@@ -185,7 +185,7 @@ describe('MessageItem arms', () => {
     expect(screen.getByRole('button', { name: '复制' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '在新对话中分支' }))
     expect(branchAt).toHaveBeenCalledWith(1, 'user')
-    fireEvent.click(screen.getByRole('button', { name: '删除此消息及后续内容' }))
+    fireEvent.click(screen.getByRole('button', { name: '删除此轮及后续内容' }))
     expect(deleteAt).toHaveBeenCalledWith(1)
     expect(screen.queryByRole('button', { name: '编辑' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '复制' }))

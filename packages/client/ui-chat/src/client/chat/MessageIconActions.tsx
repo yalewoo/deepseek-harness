@@ -21,7 +21,7 @@ export interface MessageIconActionsProps {
   onBranch?: (() => void) | undefined
   /** Rerun the completed turn containing this message in a derived conversation. */
   onRegenerate?: (() => void) | undefined
-  /** Remove this message and later history in a derived conversation. */
+  /** Remove this message's turn and later history in a derived conversation. */
   onDelete?: (() => void) | undefined
   /** Parent layout class composed onto the actions row. */
   className?: string | undefined

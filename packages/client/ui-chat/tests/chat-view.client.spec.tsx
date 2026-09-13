@@ -1340,7 +1340,7 @@ describe('ChatView', () => {
     const branchButtons = view.getAllByRole('button', { name: '在新对话中分支' })
     expect(branchButtons).toHaveLength(4)
     expect(view.getAllByRole('button', { name: '重新生成' })).toHaveLength(2)
-    expect(view.getAllByRole('button', { name: '删除此消息及后续内容' })).toHaveLength(4)
+    expect(view.getAllByRole('button', { name: '删除此轮及后续内容' })).toHaveLength(4)
   })
 
   it('folds Think and Tool rows before the final answer without unmounting them', () => {
