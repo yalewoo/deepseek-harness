@@ -296,7 +296,7 @@ export function assertV3Event(event: SessionFormatEvent, knownEventTypes?: Reado
       }
     }
     const sources = value['sourceEventSeqs']
-    if (event.type === 'assistant/message' && sources !== undefined) {
+    if (event.type === 'assistant/message' && operation === 'append' && sources !== undefined) {
       throw new SessionFormatError(`${subject} embeds its stream and cannot carry sourceEventSeqs`)
     }
     if (sources !== undefined) {

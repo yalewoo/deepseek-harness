@@ -438,6 +438,7 @@ export class SessionCommandController {
           sourceEventSeqs: [assistantReplacement.seq],
         })
       }
+      if (versionRecord !== undefined) await this.ctx.sessions.flush(childAgent.session)
     } catch (error) {
       throw new RemoteError(
         'gateway/internal',

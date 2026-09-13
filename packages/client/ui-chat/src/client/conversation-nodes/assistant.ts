@@ -238,6 +238,7 @@ function fallbackState(context: ConversationNodeContext<AssistantState>): Assist
     }
     if (match.event.type === 'assistant/message') {
       state ??= initialState(match.event.data.turn, match.event.data.step)
+      if (match.event.surfaceOp !== 'append' && state.final === undefined) continue
       state = settleMessage(state, match, match.event)
       continue
     }
@@ -296,7 +297,7 @@ export const assistantDefinition: ConversationNodeDefinition<AssistantState> = {
   match: (event) => {
     if (event.type === 'step/start') return { id: `${event.data.turn}:${event.data.step}`, role: 'start' }
     if (event.type === 'assistant/live-chunk'
-      || (event.type === 'assistant/message' && event.surfaceOp === 'append')) {
+      || event.type === 'assistant/message') {
       return { id: `${event.data.turn}:${event.data.step}`, role: 'update' }
     }
     if (event.type === 'llm/retry') {
@@ -312,7 +313,10 @@ export const assistantDefinition: ConversationNodeDefinition<AssistantState> = {
     if (match.event.type === 'assistant/live-chunk') {
       return updateChunk(context.state, match.event.data.chunk, match.event.seq, match.event.time)
     }
-    if (match.event.type === 'assistant/message') return settleMessage(context.state, match, match.event)
+    if (match.event.type === 'assistant/message') {
+      if (match.event.surfaceOp !== 'append' && context.state.final === undefined) return context.state
+      return settleMessage(context.state, match, match.event)
+    }
     if (match.event.type === 'llm/retry') {
       return resetForRetry(context.state)
     }

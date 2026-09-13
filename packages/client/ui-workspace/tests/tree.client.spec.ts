@@ -57,6 +57,21 @@ describe('deriveGroups', () => {
     expect(groups[0]!.sessions.map(session => session.id)).toEqual([sid('older'), sid('newer')])
   })
 
+  it('does not restore sessions hidden from the canonical list ids', () => {
+    const base = summary('base', 10)
+    const hiddenVariant = summary('variant', 20)
+    const sessions = {
+      ...list(base, hiddenVariant),
+      ids: [base.id],
+      current: hiddenVariant.id,
+    }
+    const groups = deriveGroups(
+      sessions, [workspace('first', ['base', 'variant'])], noArchive, noAttention, view(['first']),
+    )
+    expect(groups[0]!.sessions.map(session => session.id)).toEqual([base.id])
+    expect(groups[0]!.sessionCount).toBe(1)
+  })
+
   it('projects pending-interaction state into grouped and flat rows', () => {
     const awaiting = { ...summary('awaiting', 10), running: true }
     const sessions = list(awaiting)

@@ -230,6 +230,7 @@ describe('sessions.fork', () => {
 
   it('replaces an assistant reply in the child model-visible history', async () => {
     const ctx = await composed()
+    const flush = vi.spyOn(ctx.sessions, 'flush')
     const source = ctx.sessions.create(sid('session-source'), { meta: { cwd: '/proj' } })
     source.append('turn/start', { turn: 1 })
     source.append('user/message', createUserMessage({
@@ -275,6 +276,7 @@ describe('sessions.fork', () => {
     if (replacement?.type === 'assistant/message') {
       expect(replacement.data.message.id).not.toBe(assistant.data.message.id)
     }
+    expect(flush).toHaveBeenCalledWith(child)
     await ctx.fiber.dispose()
   })
 

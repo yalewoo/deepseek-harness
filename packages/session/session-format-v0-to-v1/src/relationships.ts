@@ -130,6 +130,7 @@ export function assertReleasedArtifactRelationships(
         requireOpenStep(event, data, openTurn, openStep)
         break
       case 'assistant/message': {
+        if (event['surfaceOp'] !== 'append') break
         requireOpenStep(event, data, openTurn, openStep)
         const message = releasedV0Record(data['message'], `assistant/message ${event.seq} message`)
         const content = message['content'] as readonly Record<string, SessionFormatJsonValue>[]

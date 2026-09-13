@@ -813,6 +813,25 @@ describe('built-in conversation node Definitions', () => {
       ? settled.location.step.data.get('assistant-step')
       : undefined).toBe(settled?.data)
 
+    value.append(at(5, 'step/end', { turn: 1, step: 1 }))
+    value.append(at(6, 'turn/end', { turn: 1, reason: { kind: 'completed' } }))
+    value.append(at(7, 'assistant/message', {
+      turn: 1,
+      step: 1,
+      message: assistantMessage('assistant-edited', 'edited reply'),
+    }, {
+      surfaceOp: { op: 'replace', startSeq: 4, endSeq: 4 },
+      sourceEventSeqs: [4],
+    }))
+    value.flush()
+
+    const edited = node(snapshot(value), 'assistant-step')
+    expect(edited?.key).toBe(settled?.key)
+    expect(edited?.data).toMatchObject({
+      status: 'settled',
+      blocks: [{ kind: 'text', text: 'edited reply' }],
+    })
+
     const interruptedValue = assembler([
       at(10, 'turn/start', { turn: 2 }),
       at(11, 'step/start', { turn: 2, step: 1 }),

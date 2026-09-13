@@ -229,11 +229,29 @@ describe.each(['migration', 'native V3'] as const)('%s event admission', (mode) 
 
   it.each([
     ['empty array', []], ['nonempty array', [0]], ['null', null], ['boolean', false],
-  ] satisfies [string, SessionFormatJsonValue][])('forbids assistant sourceEventSeqs: %s', (_name, sourceEventSeqs) => {
+  ] satisfies [string, SessionFormatJsonValue][])('forbids appended assistant sourceEventSeqs: %s', (_name, sourceEventSeqs) => {
     const events = toolLog(false)
     events[2] = { ...events[2]!, sourceEventSeqs }
     expect(() => admit(events)).toThrow(mode === 'migration' ? /retains obsolete chunk provenance/ : /cannot carry sourceEventSeqs/)
   })
+
+  if (mode === 'native V3') {
+    it('allows an assistant replacement to cite the shadowed message', () => {
+      const events = toolLog(false)
+      events.push(event('assistant/message', 7, {
+        turn: 1, step: 1, stream: [],
+        message: {
+          id: 'assistant-edited', role: 'assistant',
+          source: { kind: 'model', provider: 'mock', model: 'mock' },
+          content: [{ type: 'text', text: 'edited' }],
+        },
+      }, {
+        surfaceOp: { op: 'replace', startSeq: 2, endSeq: 2 },
+        sourceEventSeqs: [2],
+      }))
+      expect(restore(artifact(events)).events.at(-1)).toEqual(events.at(-1))
+    })
+  }
 
   it.each([
     ['empty', []], ['scalar', 0], ['null', null], ['negative', [-1]], ['fractional', [0.5]],
