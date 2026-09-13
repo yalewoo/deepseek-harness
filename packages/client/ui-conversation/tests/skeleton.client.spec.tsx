@@ -681,6 +681,21 @@ describe('ConversationRoot resident composer', () => {
     }
   })
 
+  it('forwards wheel input over a width handle to the conversation scrollport', () => {
+    const b = mount(sessionSnapshotOf())
+    const handle = b.view.container.querySelector('[data-width-handle="right"]') as HTMLElement
+    const scroller = b.view.container.querySelector('[data-conversation-scroll]') as HTMLElement
+    Object.defineProperty(scroller, 'clientHeight', { value: 400, configurable: true })
+    scroller.scrollTop = 100
+
+    expect(fireEvent.wheel(handle, { deltaY: 30 })).toBe(true)
+    expect(scroller.scrollTop).toBe(130)
+    fireEvent.wheel(handle, { deltaY: -2, deltaMode: WheelEvent.DOM_DELTA_LINE })
+    expect(scroller.scrollTop).toBe(98)
+    fireEvent.wheel(handle, { deltaY: 1, deltaMode: WheelEvent.DOM_DELTA_PAGE })
+    expect(scroller.scrollTop).toBe(498)
+  })
+
   it('hero phase renders no width handles (no transcript to size)', () => {
     const b = mount(sessionSnapshotOf({ blank: true }))
     expect(b.view.container.querySelector('[data-width-handle]')).toBeNull()

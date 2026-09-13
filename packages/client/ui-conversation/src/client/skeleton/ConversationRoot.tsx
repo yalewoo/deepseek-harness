@@ -54,6 +54,7 @@ function WidthHandle(props: {
   onDrag: (width: number) => void
   onCommit: (width: number) => void
   onEnd: () => void
+  onWheel: (event: React.WheelEvent<HTMLDivElement>) => void
 }) {
   const [dragging, setDragging] = useState(false)
   const base = useRef(0)
@@ -124,6 +125,7 @@ function WidthHandle(props: {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       onLostPointerCapture={onPointerCancel}
+      onWheel={props.onWheel}
     />
   )
 }
@@ -233,6 +235,14 @@ export function ConversationRoot({
     const root = rootEl.current
     if (root !== null) publishWidths(root)
   }, [publishWidths])
+  const onHandleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>): void => {
+    const scroller = rootEl.current?.querySelector<HTMLElement>('[data-conversation-scroll]')
+    if (scroller === undefined || scroller === null) return
+    const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+      ? 16
+      : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? scroller.clientHeight : 1
+    scroller.scrollTop += event.deltaY * scale
+  }, [])
 
   const sessionWorkspace = sessionId === undefined
     ? undefined
@@ -387,6 +397,7 @@ export function ConversationRoot({
             onDrag={onHandleDrag}
             onCommit={onHandleCommit}
             onEnd={onHandleEnd}
+            onWheel={onHandleWheel}
           />
         ))}
       </div>
