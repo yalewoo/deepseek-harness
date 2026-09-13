@@ -10,6 +10,7 @@ const messageVersionSchema = z.object({
   groupId: z.string().min(1),
   baseSessionId: z.string().min(1),
   variantSessionId: z.string().min(1),
+  createdAt: z.number().int().nonnegative(),
   anchorTurn: z.number().int().nonnegative(),
   sourceMessageId: z.string().min(1),
   role: z.enum(['user', 'assistant']),

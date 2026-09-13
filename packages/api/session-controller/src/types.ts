@@ -116,6 +116,7 @@ export interface MessageVersionRecord {
   readonly groupId: string
   readonly baseSessionId: SessionId
   readonly variantSessionId: SessionId
+  readonly createdAt: number
   readonly anchorTurn: number
   readonly sourceMessageId: MessageId
   readonly role: 'user' | 'assistant'

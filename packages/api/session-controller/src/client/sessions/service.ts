@@ -19,8 +19,9 @@ import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import { SessionSeq, type SessionId } from '@deepseek-ai/dsh-session/types'
 import { workspaceTitleOf } from '@deepseek-ai/dsh-util-workspace-path'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import { SESSION_SEARCH_RESULT_LIMIT } from '../../types.ts'
-import type { SessionJob as JobView } from '../../types.ts'
+import type { MessageVersionRecord, SessionJob as JobView } from '../../types.ts'
 import type { SessionProjectionMap } from '@deepseek-ai/dsh-session-projection/types'
 import {
   createSnapshotStore, type SnapshotStore,
@@ -84,6 +85,49 @@ export interface SessionListState {
   jobsBySession: Readonly<Record<SessionId, readonly JobView[]>>
   /** Current session's catalog-derived address, absent on ordinary navigation. */
   currentAddress: SubagentAddress | undefined
+}
+
+/** One inline message-version selector projected over immutable Sessions. */
+export interface MessageVersionSet {
+  readonly groupId: string
+  readonly baseSessionId: SessionId
+  readonly currentIndex: number
+  readonly sessionIds: readonly SessionId[]
+}
+
+function versionRecords(summary: SessionSummary | undefined): readonly MessageVersionRecord[] {
+  return summary?.projectionValues?.messageVersions ?? []
+}
+
+/** Resolve one message location into its ordered Session-backed versions. */
+export function messageVersionsFor(
+  state: SessionListState,
+  sessionId: SessionId,
+  turn: number,
+  role: 'user' | 'assistant',
+): MessageVersionSet | undefined {
+  const activeRecord = versionRecords(state.byId[sessionId])
+    .find(record => record.anchorTurn === turn && record.role === role)
+  const candidate = activeRecord ?? Object.values(state.byId)
+    .flatMap(summary => versionRecords(summary))
+    .filter(record => record.baseSessionId === sessionId && record.anchorTurn === turn && record.role === role)
+    .sort((left, right) => right.createdAt - left.createdAt)[0]
+  if (candidate === undefined) return undefined
+  const variants = Object.values(state.byId)
+    .flatMap(summary => versionRecords(summary)
+      .filter(record => record.groupId === candidate.groupId && record.variantSessionId === summary.id))
+    .sort((left, right) => left.createdAt - right.createdAt)
+  const sessionIds = [candidate.baseSessionId, ...variants.map(record => record.variantSessionId)]
+  const activeSessionId = sessionId === candidate.baseSessionId
+    ? candidate.baseSessionId
+    : activeRecord?.variantSessionId ?? sessionId
+  const currentIndex = sessionIds.indexOf(activeSessionId)
+  return currentIndex === -1 ? undefined : {
+    groupId: candidate.groupId,
+    baseSessionId: candidate.baseSessionId,
+    currentIndex,
+    sessionIds,
+  }
 }
 
 /** Persisted navigation cell: address survives refresh for correct history routing. */
@@ -454,6 +498,32 @@ export class ClientSessions implements ISessions {
     return childId
   }
 
+  /** Create one inline message version and refresh its durable projection before resolving. */
+  async forkMessageVersion(opts: {
+    sessionId: SessionId
+    atSeq: number
+    turn: number
+    role: 'user' | 'assistant'
+    action: 'regenerate' | 'user-edit' | 'assistant-edit'
+    text?: string
+  }): Promise<SessionId> {
+    const current = messageVersionsFor(this.list.getSnapshot(), opts.sessionId, opts.turn, opts.role)
+    const result = await this.manager.fork({
+      sessionId: opts.sessionId,
+      atSeq: SessionSeq(Math.floor(opts.atSeq)),
+      version: {
+        groupId: current?.groupId ?? randomUUID(),
+        baseSessionId: current?.baseSessionId ?? opts.sessionId,
+        action: opts.action,
+        ...(opts.text === undefined ? {} : { text: opts.text }),
+      },
+    })
+    if (!result.ok) throw new SessionForkError(result.error, opts.sessionId)
+    await this.manager.refreshList()
+    this.projectList()
+    return result.value.sessionId
+  }
+
   /** Permanently delete one archived Session. */
   async delete(sessionId: SessionId): Promise<void> {
     const result = await this.manager.delete(sessionId)
@@ -590,7 +660,9 @@ export class ClientSessions implements ISessions {
     const ids: SessionId[] = []
     const byId: Record<SessionId, SessionSummary> = {}
     for (const entry of items) {
-      ids.push(entry.sessionId)
+      const isMessageVersion = entry.projectionValues?.messageVersions
+        ?.some(record => record.variantSessionId === entry.sessionId) ?? false
+      if (!isMessageVersion) ids.push(entry.sessionId)
       byId[entry.sessionId] = {
         id: entry.sessionId,
         displayTitle: displayTitleOf(entry.title, entry.cwd, entry.sessionId),

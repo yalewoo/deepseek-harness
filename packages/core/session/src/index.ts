@@ -167,7 +167,7 @@ export function adoptSessionEvent<T extends SessionEvent>(event: T): T {
   validateSessionEventData(event, `session event at seq ${event.seq}`)
   validateSurfaceMetadata(event)
   assertMessageEventShape(
-    event,
+    event as unknown as Record<string, unknown>,
     `session event at seq ${event.seq}`,
   )
   switch (event.type) {

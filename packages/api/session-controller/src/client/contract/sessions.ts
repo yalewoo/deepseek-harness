@@ -100,6 +100,15 @@ export interface ISessions {
     increaseTitle?: boolean
     mode?: 'through-turn' | 'before-turn' | 'rerun-turn'
   }): Promise<SessionId>
+  /** Create a Session-backed inline version of one durable user or assistant message. */
+  forkMessageVersion(opts: {
+    sessionId: SessionId
+    atSeq: number
+    turn: number
+    role: 'user' | 'assistant'
+    action: 'regenerate' | 'user-edit' | 'assistant-edit'
+    text?: string
+  }): Promise<SessionId>
   /** Permanently delete one archived Session. */
   delete(sessionId: SessionId): Promise<void>
   /**

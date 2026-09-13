@@ -13,7 +13,7 @@ import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { LlmAttemptId } from '@deepseek-ai/dsh-llm'
 import { RemoteStreamCarrierError } from '@deepseek-ai/dsh-api-gateway/client'
 import { SESSION_FORMAT_VERSION, SessionSeq } from '@deepseek-ai/dsh-session/types'
-import { ClientSessions, SessionCreateError } from '../src/client/sessions/service.ts'
+import { ClientSessions, messageVersionsFor, SessionCreateError } from '../src/client/sessions/service.ts'
 import { scopeOf } from '../src/client/scope.ts'
 import type { SessionFollowFrame } from '../src/types.ts'
 import {
@@ -85,6 +85,35 @@ describe('list store projection', () => {
       displayTitle: 's2', parentId: 's1', origin: 'subagent', running: true,
     })
     expect(state.byId[sid('s2')]?.title).toBeUndefined()
+  })
+
+  it('keeps message-version sessions addressable while hiding them from sidebar ids', async () => {
+    const b = bench()
+    const version = {
+      groupId: 'group-1',
+      baseSessionId: sid('base'),
+      variantSessionId: sid('variant'),
+      createdAt: 20,
+      anchorTurn: 2,
+      sourceMessageId: 'message-1',
+      role: 'assistant' as const,
+      kind: 'regenerate' as const,
+    }
+    await feedList(b, [
+      { id: 'base' },
+      { id: 'variant', parentId: 'base', projections: { messageVersions: [version] } },
+    ])
+
+    const state = b.svc.list.getSnapshot()
+    expect(state.ids).toEqual(['base'])
+    expect(state.byId[sid('variant')]).toBeDefined()
+    expect(messageVersionsFor(state, sid('base'), 2, 'assistant')).toEqual({
+      groupId: 'group-1',
+      baseSessionId: 'base',
+      currentIndex: 0,
+      sessionIds: ['base', 'variant'],
+    })
+    expect(messageVersionsFor(state, sid('variant'), 2, 'assistant')?.currentIndex).toBe(1)
   })
 
   it('reprojects a blank session from the generic agent-preset projection', async () => {
@@ -988,6 +1017,38 @@ describe('fork', () => {
     b.api.onFork = () => Promise.resolve(ok({ sessionId: sid('child-2') }))
     await expect(b.svc.fork({ sessionId: sid('source') })).resolves.toBe('child-2')
     expect(b.api.callsOf('session.rename')).toEqual([])
+  })
+
+  it('creates a message version and refreshes its projection before resolving', async () => {
+    const b = bench()
+    await feedList(b, [{ id: 'source', cwd: '/work' }])
+    b.api.onFork = () => Promise.resolve(ok({ sessionId: sid('variant') }))
+    b.api.onList = () => Promise.resolve(ok({ items: [
+      { sessionId: sid('source'), updatedAt: 1, running: false, blank: false },
+      {
+        sessionId: sid('variant'), updatedAt: 2, running: false, blank: false,
+        parentSessionId: sid('source'),
+        projections: { asOfSeq: 10, values: { messageVersions: [{
+          groupId: 'group-1', baseSessionId: sid('source'), variantSessionId: sid('variant'),
+          createdAt: 2, anchorTurn: 1, sourceMessageId: 'message-1', role: 'assistant', kind: 'regenerate',
+        }] } },
+      },
+    ] })) as never
+
+    await expect(b.svc.forkMessageVersion({
+      sessionId: sid('source'), atSeq: 8.7, turn: 1, role: 'assistant', action: 'regenerate',
+    })).resolves.toBe('variant')
+
+    expect(b.api.callsOf('session.fork')).toEqual([{
+      sessionId: 'source',
+      atSeq: 8,
+      version: {
+        groupId: expect.any(String),
+        baseSessionId: 'source',
+        action: 'regenerate',
+      },
+    }])
+    expect(b.svc.list.getSnapshot().ids).toEqual(['source'])
   })
 
   it('rejects when child rename fails while keeping the published child addressable', async () => {

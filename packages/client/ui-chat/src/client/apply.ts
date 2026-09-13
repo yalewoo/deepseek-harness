@@ -168,13 +168,27 @@ export function apply(ctx: Context): void {
                 // Fork or child-title failure leaves the source view unchanged.
               })
           },
-          regenerateAt: (seq) => {
-            ctx.sessions.fork({ sessionId, atSeq: seq, increaseTitle: true, mode: 'rerun-turn' })
+          regenerateAt: (seq, turn) => {
+            ctx.sessions.forkMessageVersion({
+              sessionId, atSeq: seq, turn, role: 'assistant', action: 'regenerate',
+            })
               .then((childId) => { ctx.sessions.open(childId) })
               .catch(() => {
                 // Derivation failure leaves the source view unchanged.
               })
           },
+          editAt: async (seq, turn, role, text) => {
+            const childId = await ctx.sessions.forkMessageVersion({
+              sessionId,
+              atSeq: seq,
+              turn,
+              role,
+              action: role === 'user' ? 'user-edit' : 'assistant-edit',
+              text,
+            })
+            ctx.sessions.open(childId)
+          },
+          switchMessageVersion: (childId) => { ctx.sessions.open(childId) },
           deleteAt: (seq) => {
             ctx.sessions.fork({ sessionId, atSeq: seq, increaseTitle: true, mode: 'before-turn' })
               .then((childId) => { ctx.sessions.open(childId) })

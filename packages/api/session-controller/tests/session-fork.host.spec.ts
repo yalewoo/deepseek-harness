@@ -122,7 +122,7 @@ describe('sessions.fork', () => {
       atSeq: 4,
       mode: 'before-turn',
     }))
-    expect(response.ok).toBe(true)
+    expect(response.ok ? null : response.error).toBeNull()
     if (!response.ok) return
     expect(ctx.sessions.get(response.value.sessionId)?.snapshotEvents().map(event => event.type)).toEqual([
       'turn/start', 'user/message', 'turn/end', 'session/end-seed',
@@ -149,10 +149,27 @@ describe('sessions.fork', () => {
   it('records a regenerated reply as an ignorable message version', async () => {
     const followup = vi.fn()
     const ctx = await composed([], followup as Agent['followup'])
-    const source = liveAgent(ctx, 'session-source', 1)
+    const source = ctx.sessions.create(sid('session-source'), { meta: { cwd: '/proj' } })
+    source.append('turn/start', { turn: 1 })
+    source.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'prompt' }], source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    source.append('step/start', { turn: 1, step: 1 })
+    const assistant = source.append('assistant/message', {
+      turn: 1,
+      step: 1,
+      stream: [],
+      message: createAssistantMessage({
+        content: [{ type: 'text', text: 'reply' }],
+        source: { provider: 'fixture', model: 'fixture' },
+      }),
+    }, { surfaceOp: 'append' })
+    source.append('step/end', { turn: 1, step: 1 })
+    source.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    ctx.agents.register({ id: source.id, session: source, status: 'idle', ctx } as Agent)
     const response = await remote(ctx).fork(request({
       sessionId: source.id,
-      atSeq: 1,
+      atSeq: assistant.seq,
       version: {
         groupId: 'version-group',
         baseSessionId: source.id,
@@ -160,7 +177,7 @@ describe('sessions.fork', () => {
       },
     }))
 
-    expect(response.ok).toBe(true)
+    expect(response.ok ? null : response.error).toBeNull()
     if (!response.ok) return
     const child = ctx.sessions.get(response.value.sessionId)
     expect(child?.snapshotEvents().find(event => event.type === 'session/message-version')).toMatchObject({
@@ -170,7 +187,7 @@ describe('sessions.fork', () => {
         baseSessionId: source.id,
         variantSessionId: response.value.sessionId,
         anchorTurn: 1,
-        role: 'user',
+        role: 'assistant',
         kind: 'regenerate',
       },
     })

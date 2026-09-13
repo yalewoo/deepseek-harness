@@ -283,12 +283,12 @@ export class SessionCommandController {
     }
     using source = observed
     const lastSeq = source.events.at(-1)?.seq ?? -1
-    const anchoredEnd = atSeq === undefined
+    const anchoredEnd: SessionEvent<'turn/end'> | undefined = atSeq === undefined
       ? undefined
-      : source.events.find(event => event.type === 'turn/end' && event.seq >= atSeq)
+      : source.events.find((event): event is SessionEvent<'turn/end'> => event.type === 'turn/end' && event.seq >= atSeq)
     const boundary = anchoredEnd
       ?? (atSeq === undefined || atSeq > lastSeq
-        ? source.events.findLast(event => event.type === 'turn/end')
+        ? source.events.findLast((event): event is SessionEvent<'turn/end'> => event.type === 'turn/end')
         : undefined)
     if (boundary === undefined) {
       throw new RemoteError(
@@ -363,7 +363,7 @@ export class SessionCommandController {
     }
     const childId = brandString<SessionId>(`session-${randomUUID()}`)
     if (request.version !== undefined) {
-      const sourceEvent = request.version.action === 'assistant-edit'
+      const sourceEvent = request.version.action === 'assistant-edit' || request.version.action === 'regenerate'
         ? source.events.find(event => event.seq === atSeq && event.type === 'assistant/message')
         : source.events.find(event => event.type === 'user/message'
           && event.seq <= boundary.seq
@@ -372,7 +372,8 @@ export class SessionCommandController {
             && event.seq <= boundary.seq
             && event.seq >= (source.events.findLast(candidate => candidate.type === 'turn/start'
               && candidate.seq <= boundary.seq)?.seq ?? boundary.seq))
-      if (sourceEvent?.type !== (request.version.action === 'assistant-edit' ? 'assistant/message' : 'user/message')) {
+      const expectedType = request.version.action === 'user-edit' ? 'user/message' : 'assistant/message'
+      if (sourceEvent?.type !== expectedType) {
         throw new RemoteError('session/fork-unavailable', 'message version anchor does not identify the expected message', {
           sessionId: request.sessionId,
         })
@@ -384,6 +385,7 @@ export class SessionCommandController {
         groupId: request.version.groupId,
         baseSessionId: request.version.baseSessionId,
         variantSessionId: childId,
+        createdAt: Date.now(),
         anchorTurn: boundary.data.turn,
         sourceMessageId,
         role: sourceEvent.type === 'assistant/message' ? 'assistant' : 'user',

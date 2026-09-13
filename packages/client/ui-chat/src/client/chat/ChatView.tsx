@@ -5,6 +5,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import type {
   ConversationTimelineSnapshot, RenderMessageImages,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { messageVersionsFor } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionSeq } from '@deepseek-ai/dsh-session/types'
 import { Button, IconChevronDownOutline14, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps, OpenFileOptions } from '../contract/slots.ts'
@@ -217,7 +218,7 @@ const ChatNodeList = memo(function ChatNodeList({ order, ...seatProps }: ChatNod
 export function ChatView({
   useSession, useChat, useChatNode, useChatNodeProcess, useSessions, useStore, actions, renderSlot,
   sessionId, openFile, openSkill, loadOlder, loadThrough, loadImage, openView, chatScroll,
-  branchAt, regenerateAt, deleteAt, fileMentions,
+  branchAt, regenerateAt, editAt, switchMessageVersion, deleteAt, fileMentions,
   useTranscriptView, useProjection, t,
 }: ChatViewSlotProps) {
   const order = useChat(s => s.order)
@@ -236,7 +237,12 @@ export function ChatView({
   const timeline = useChat(s => s.timeline)
   const inbox = useSession(s => s.queue)
   // Workspace root off the session list row: path summaries display relative to it.
-  const cwd = useSessions(s => s.byId[sessionId]?.cwd)
+  const sessionList = useSessions(s => s)
+  const cwd = sessionList.byId[sessionId]?.cwd
+  const messageVersionsAt = useCallback(
+    (turn: number, role: 'user' | 'assistant') => messageVersionsFor(sessionList, sessionId, turn, role),
+    [sessionId, sessionList],
+  )
   const running = useSession(s => s.running)
   const openState = useSession(s => s.openState)
   const openError = useSession(s => s.openError)
@@ -796,6 +802,9 @@ export function ChatView({
             inspectCall={inspectCall}
             branchAt={branchAt}
             regenerateAt={regenerateAt}
+            editAt={editAt}
+            messageVersionsAt={messageVersionsAt}
+            switchMessageVersion={switchMessageVersion}
             deleteAt={deleteAt}
             loadImage={loadImage}
             renderMessageImages={renderMessageImages}

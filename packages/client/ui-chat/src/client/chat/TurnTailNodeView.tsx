@@ -11,7 +11,8 @@ type TurnTailNodeViewProps = ChatNodeViewProps<'turn-tail'>
 
 /** Turn-local actions and feature tail over the Location index, independent of Assistant placement. */
 export const TurnTailNodeView = memo(function TurnTailNodeView({
-  node, openFile, branchAt, regenerateAt, deleteAt, renderSlot, renderSlotChain, t, useChat,
+  node, openFile, branchAt, regenerateAt, editAt, messageVersionsAt,
+  switchMessageVersion, deleteAt, renderSlot, renderSlotChain, t, useChat,
 }: TurnTailNodeViewProps) {
   const data = node.data
   const isLatestTurn = useChat(snapshot => snapshot.timeline.turnOrder.at(-1) === data.turn)
@@ -29,6 +30,7 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
   // Interruption-frozen partials carry no messageId, so they address no
   // durable message and contribute no per-message actions.
   const messageId = closing.finalNode.messageId
+  const versions = messageVersionsAt(data.turn, 'assistant')
   const assistantActions = messageId === undefined
     ? null
     : renderSlot('conversation.chat.assistant-actions', { messageId })
@@ -43,7 +45,14 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
         text={assistantText(closing.blocks)}
         time={closing.time}
         clock="end"
-        onRegenerate={() => { regenerateAt(closing.finalNode.seq) }}
+        onRegenerate={() => { regenerateAt(closing.finalNode.seq, data.turn) }}
+        onEdit={messageId === undefined
+          ? undefined
+          : text => editAt(closing.finalNode.seq, data.turn, 'assistant', text)}
+        versions={versions === undefined ? undefined : {
+          ...versions,
+          onSwitch: switchMessageVersion,
+        }}
         onBranch={() => { branchAt(closing.finalNode.seq, 'assistant') }}
         onDelete={() => { deleteAt(closing.finalNode.seq) }}
         className={css.actions}

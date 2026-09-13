@@ -313,9 +313,16 @@ export function PendingSubmissionBubble({ submission, renderMessageImages, t }: 
 
 /** User and admitted-steering keyed Chat renderer. */
 export const UserMessageNodeView = memo(function UserMessageNodeView({
-  node, renderMessageImages, openFile, openSkill, branchAt, deleteAt, t,
+  node, renderMessageImages, openFile, openSkill, branchAt, editAt,
+  messageVersionsAt, switchMessageVersion, deleteAt, t,
 }: ChatNodeViewProps<'user' | 'steering'>) {
   const data = node.data
+  const turn = node.location.kind === 'turn' || node.location.kind === 'step'
+    ? node.location.turn.turn
+    : undefined
+  const versions = node.kind === 'user' && turn !== undefined
+    ? messageVersionsAt(turn, 'user')
+    : undefined
   return (
     <UserStyleBubble
       content={data.content}
@@ -330,6 +337,13 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
           time={data.time}
           clock="start"
           onBranch={node.kind === 'user' ? () => { branchAt(data.seq, 'user') } : undefined}
+          onEdit={node.kind === 'user' && turn !== undefined
+            ? text => editAt(data.seq, turn, 'user', text)
+            : undefined}
+          versions={versions === undefined ? undefined : {
+            ...versions,
+            onSwitch: switchMessageVersion,
+          }}
           onDelete={node.kind === 'user' ? () => { deleteAt(data.seq) } : undefined}
           className={css.actions}
           t={t}

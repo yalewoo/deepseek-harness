@@ -79,3 +79,56 @@
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-secondary);
 }
+
+.versions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  white-space: nowrap;
+}
+
+.versionButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.versionButton:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.editText {
+  box-sizing: border-box;
+  width: min(560px, 72vw);
+  min-height: 180px;
+  resize: vertical;
+  padding: 12px;
+  border: 1px solid var(--dsw-alias-border-normal);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.editFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.editError {
+  margin-top: 8px;
+  color: var(--dsw-alias-status-error);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+}

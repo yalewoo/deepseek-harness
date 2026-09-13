@@ -11,6 +11,7 @@ import type {
   SessionQueuedItem,
   SessionSummary,
   SessionJob as JobView,
+  SessionForkRequest,
 } from '../../types.ts'
 import { mergeOrderedBaseline } from '../ordered-baseline.ts'
 import { isRemoteFailure } from '@deepseek-ai/dsh-api-gateway/client'
@@ -598,6 +599,7 @@ export class SessionManager {
       sessionId: SessionId
       atSeq?: SessionSeq
       mode?: 'through-turn' | 'before-turn' | 'rerun-turn'
+      version?: SessionForkRequest['version']
     },
   ): Promise<RemoteResult<{ sessionId: SessionId }>> {
     const source = this.summaries.find(s => s.sessionId === opts.sessionId)
@@ -605,6 +607,7 @@ export class SessionManager {
       sessionId: opts.sessionId,
       ...opts.atSeq === undefined ? {} : { atSeq: opts.atSeq },
       ...opts.mode === undefined ? {} : { mode: opts.mode },
+      ...opts.version === undefined ? {} : { version: opts.version },
     })
     const childId = result.ok
       ? result.value.sessionId
