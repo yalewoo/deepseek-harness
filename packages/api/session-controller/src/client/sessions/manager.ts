@@ -594,12 +594,17 @@ export class SessionManager {
    * @returns the fork result (the child session id).
    */
   async fork(
-    opts: { sessionId: SessionId; atSeq?: SessionSeq },
+    opts: {
+      sessionId: SessionId
+      atSeq?: SessionSeq
+      mode?: 'through-turn' | 'before-turn' | 'rerun-turn'
+    },
   ): Promise<RemoteResult<{ sessionId: SessionId }>> {
     const source = this.summaries.find(s => s.sessionId === opts.sessionId)
     const result = await this.remote.session.fork({
       sessionId: opts.sessionId,
       ...opts.atSeq === undefined ? {} : { atSeq: opts.atSeq },
+      ...opts.mode === undefined ? {} : { mode: opts.mode },
     })
     const childId = result.ok
       ? result.value.sessionId

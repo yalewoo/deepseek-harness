@@ -301,6 +301,8 @@ export interface SessionRenameValue {
 export interface SessionForkRequest {
   readonly sessionId: SessionId
   readonly atSeq?: number
+  /** Completed-turn boundary behavior; omitted preserves the legacy through-turn fork. */
+  readonly mode?: 'through-turn' | 'before-turn' | 'rerun-turn'
 }
 
 /** Identity of a newly forked Session. */

@@ -156,11 +156,30 @@ export function apply(ctx: Context): void {
             },
             read: () => chatScrollPositions.get(sessionId) ?? null,
           },
-          forkAt: (seq) => {
-            ctx.sessions.fork({ sessionId, atSeq: seq, increaseTitle: true })
+          branchAt: (seq, role) => {
+            ctx.sessions.fork({
+              sessionId,
+              atSeq: seq,
+              increaseTitle: true,
+              mode: role === 'user' ? 'rerun-turn' : 'through-turn',
+            })
               .then((childId) => { ctx.sessions.open(childId) })
               .catch(() => {
                 // Fork or child-title failure leaves the source view unchanged.
+              })
+          },
+          regenerateAt: (seq) => {
+            ctx.sessions.fork({ sessionId, atSeq: seq, increaseTitle: true, mode: 'rerun-turn' })
+              .then((childId) => { ctx.sessions.open(childId) })
+              .catch(() => {
+                // Derivation failure leaves the source view unchanged.
+              })
+          },
+          deleteAt: (seq) => {
+            ctx.sessions.fork({ sessionId, atSeq: seq, increaseTitle: true, mode: 'before-turn' })
+              .then((childId) => { ctx.sessions.open(childId) })
+              .catch(() => {
+                // Derivation failure leaves the source view unchanged.
               })
           },
         }

@@ -90,7 +90,6 @@ export interface TurnTailChatData {
   /** Last finalized content-bearing Assistant in this Turn. */
   readonly closing: FinalAssistantChatData | null
   /** Whether non-rendered later evidence makes the closing seq non-tail. */
-  readonly branchUnavailable: boolean
   readonly ttftMs?: number
   readonly tokensPerSecond?: number
   /** Exact per-Turn accounting; absent when the loaded evidence is incomplete. */

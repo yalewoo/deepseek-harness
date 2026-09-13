@@ -224,10 +224,10 @@ export class SessionCommandController {
     }
     using source = observed
     const lastSeq = source.events.at(-1)?.seq ?? -1
-    const anchoredBoundary = atSeq === undefined
+    const anchoredEnd = atSeq === undefined
       ? undefined
       : source.events.find(event => event.type === 'turn/end' && event.seq >= atSeq)
-    const boundary = anchoredBoundary
+    const boundary = anchoredEnd
       ?? (atSeq === undefined || atSeq > lastSeq
         ? source.events.findLast(event => event.type === 'turn/end')
         : undefined)
@@ -240,9 +240,35 @@ export class SessionCommandController {
         { sessionId: request.sessionId },
       )
     }
-    let cut = SessionLogOffset(boundary.seq + 1)
-    while (cut < source.events.length && source.events[cut]?.type !== 'turn/start') {
-      cut = SessionLogOffset(cut + 1)
+    const mode = request.mode ?? 'through-turn'
+    let replayMessage: UserMessage | undefined
+    let cut: ReturnType<typeof SessionLogOffset>
+    if (mode === 'through-turn') {
+      cut = SessionLogOffset(boundary.seq + 1)
+      while (cut < source.events.length && source.events[cut]?.type !== 'turn/start') {
+        cut = SessionLogOffset(cut + 1)
+      }
+    } else {
+      const turnStart = source.events.findLast(event => event.type === 'turn/start' && event.seq <= boundary.seq)
+      if (turnStart === undefined) {
+        throw new RemoteError(
+          'session/fork-unavailable',
+          `session "${request.sessionId}" has no turn start for event ${String(atSeq)}`,
+          { sessionId: request.sessionId },
+        )
+      }
+      cut = SessionLogOffset(turnStart.seq)
+      if (mode === 'rerun-turn') {
+        replayMessage = source.events.find(event => event.type === 'user/message'
+          && event.seq >= turnStart.seq && event.seq <= boundary.seq)?.data
+        if (replayMessage === undefined) {
+          throw new RemoteError(
+            'session/fork-unavailable',
+            `session "${request.sessionId}" has no user message in the selected turn`,
+            { sessionId: request.sessionId },
+          )
+        }
+      }
     }
     let workspace: Workspace | undefined
     try {
@@ -258,7 +284,7 @@ export class SessionCommandController {
     const composition = await this.agents.composeAgent(this.agents.presetForObservation(source))
     try {
       const { provider, model } = this.ctx.agentDefaultModel.currentSelection()
-      await this.ctx.agents.create({
+      const child = await this.ctx.agents.create({
         sessionId: childId,
         seed: source.events.slice(0, cut),
         inheritedEventCount: cut,
@@ -273,6 +299,7 @@ export class SessionCommandController {
         agentOptions: { provider, model },
         setup: composition.setup,
       })
+      if (replayMessage !== undefined) child.agent.followup(replayMessage)
     } catch (error) {
       throw new RemoteError(
         'gateway/internal',

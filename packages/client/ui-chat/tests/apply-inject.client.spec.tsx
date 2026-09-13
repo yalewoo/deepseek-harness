@@ -93,7 +93,7 @@ async function bench() {
 }
 
 describe('Chat inject API', () => {
-  it('loads older history and forks through the Session Controller', async () => {
+  it('loads older history and derives message actions through the Session Controller', async () => {
     const b = await bench()
     const { injected } = b.chatViewApi(ROOT)
     injected.loadOlder()
@@ -102,18 +102,28 @@ describe('Chat inject API', () => {
     void injected.loadThrough(SessionSeq(42))
     expect(b.session.loadThrough).toHaveBeenCalledWith(42)
 
-    injected.forkAt(17)
+    injected.branchAt(17, 'user')
     await vi.waitFor(() => {
       expect(b.runtime.sessions.calls).toContainEqual({ method: 'open', args: [ROOT] })
     })
     expect(b.runtime.sessions.calls).toContainEqual({
-      method: 'fork', args: [{ sessionId: ROOT, atSeq: 17, increaseTitle: true }],
+      method: 'fork', args: [{
+        sessionId: ROOT, atSeq: 17, increaseTitle: true, mode: 'rerun-turn',
+      }],
     })
 
     const fork = vi.spyOn(b.runtime.sessions, 'fork').mockRejectedValueOnce(new Error('fork failed'))
-    injected.forkAt(18)
+    injected.regenerateAt(18)
     await vi.waitFor(() => {
-      expect(fork).toHaveBeenCalledWith({ sessionId: ROOT, atSeq: 18, increaseTitle: true })
+      expect(fork).toHaveBeenCalledWith({
+        sessionId: ROOT, atSeq: 18, increaseTitle: true, mode: 'rerun-turn',
+      })
+    })
+    injected.deleteAt(19)
+    await vi.waitFor(() => {
+      expect(fork).toHaveBeenCalledWith({
+        sessionId: ROOT, atSeq: 19, increaseTitle: true, mode: 'before-turn',
+      })
     })
     await b.runtime.dispose()
   })

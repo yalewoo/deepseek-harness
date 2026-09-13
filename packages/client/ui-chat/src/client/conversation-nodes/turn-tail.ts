@@ -133,19 +133,6 @@ function tailData(context: ConversationNodeContext<TurnTailState>): TurnTailChat
     .filter((candidate): candidate is Readonly<FinalAssistantChatData> => candidate.finalNode !== undefined)
     .sort((left, right) => left.finalNode.seq - right.finalNode.seq)
   const closing = finalized.findLast(hasText) ?? null
-  let latestTranscriptSeq = finalized.at(-1)?.finalNode.seq
-  for (const match of context.matches) {
-    const event = match.event
-    const candidate = event.type === 'tool/call'
-      || (event.type === 'tool/result' && event.surfaceOp === 'append')
-      || (event.type === 'turn/end' && event.data.reason.kind === 'error')
-      || event.type === 'llm/retry'
-      ? event.seq
-      : undefined
-    if (candidate !== undefined && (latestTranscriptSeq === undefined || candidate > latestTranscriptSeq)) {
-      latestTranscriptSeq = candidate
-    }
-  }
   const metrics = deriveTurnMetrics(finalized.map(candidate => candidate.finalNode)).get(end.event.data.turn)
   const tokenUsage = context.start?.event.type === 'turn/start'
     ? deriveTurnTokenUsage(context.matches.map(match => match.event).filter(isSessionEvent))
@@ -155,7 +142,6 @@ function tailData(context: ConversationNodeContext<TurnTailState>): TurnTailChat
     seq: end.event.seq,
     time: end.event.time,
     closing,
-    branchUnavailable: closing === null || latestTranscriptSeq !== closing.finalNode.seq,
     ...metrics?.ttftMs === undefined ? {} : { ttftMs: metrics.ttftMs },
     ...metrics?.tokensPerSecond === undefined ? {} : { tokensPerSecond: metrics.tokensPerSecond },
     ...tokenUsage === undefined ? {} : { tokenUsage },

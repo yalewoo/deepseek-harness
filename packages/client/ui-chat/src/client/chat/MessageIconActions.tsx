@@ -1,9 +1,9 @@
-// Shared IconActions chrome for user and assistant messages: copy
-// live, optional branch wiring, and an optional date-aware clock.
+// Shared IconActions chrome for user and assistant message operations.
 
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
-  IconBranchOutline16, IconCheckOutline16, IconCopyOutline16, Tooltip, writeClipboard,
+  IconBranchOutline16, IconCheckOutline16, IconCopyOutline16, IconRefreshOutline16,
+  IconTrashOutline16, Tooltip, writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import { formatMessageClock } from './message-chrome.ts'
@@ -19,8 +19,10 @@ export interface MessageIconActionsProps {
   clock: 'start' | 'end'
   /** Fork the session at this message; omission hides the branch action. */
   onBranch?: (() => void) | undefined
-  /** The message is not a completed transcript tail, so branch stays visible but unavailable. */
-  branchUnavailable?: boolean | undefined
+  /** Rerun the completed turn containing this message in a derived conversation. */
+  onRegenerate?: (() => void) | undefined
+  /** Remove this message and later history in a derived conversation. */
+  onDelete?: (() => void) | undefined
   /** Parent layout class composed onto the actions row. */
   className?: string | undefined
   /**
@@ -38,16 +40,15 @@ export interface MessageIconActionsProps {
 }
 
 /**
- * Copy / branch (/ clock) IconActions row shared by user and assistant chrome.
- * @param props - Copy text, event time, clock side, branch callback, className.
+ * Message IconActions row shared by user and assistant chrome.
+ * @param props - Message text, event time, clock side, callbacks, and className.
  * @returns The actions row element.
  */
 export function MessageIconActions({
-  text, time, clock, onBranch, branchUnavailable = false, className,
+  text, time, clock, onBranch, onRegenerate, onDelete, className,
   extraActions, usageAction, t,
 }: MessageIconActionsProps) {
   const day = useCalendarDay()
-  const reasonId = useId()
   // Same success chrome as CodeBlock: a short check swap after the write,
   // gated so re-clicks during the window neither re-copy nor stack timers.
   const [copied, setCopied] = useState(false)
@@ -88,24 +89,31 @@ export function MessageIconActions({
         </button>
       </Tooltip>
       {extraActions}
+      {onRegenerate !== undefined && (
+        <Tooltip label={t('message.regenerate')} side="bottom">
+          <button type="button" className={css.action} aria-label={t('message.regenerate')} onClick={onRegenerate}>
+            <IconRefreshOutline16 />
+          </button>
+        </Tooltip>
+      )}
       {onBranch !== undefined && (
-        <Tooltip label={branchUnavailable ? t('message.branchUnavailable') : t('message.branch')} side="bottom">
-          {/* Native disabled buttons do not deliver the hover/focus events Tooltip needs. */}
+        <Tooltip label={t('message.branch')} side="bottom">
           <button
             type="button"
             className={css.action}
             aria-label={t('message.branch')}
-            aria-disabled={branchUnavailable || undefined}
-            aria-describedby={branchUnavailable ? reasonId : undefined}
-            data-unavailable={branchUnavailable || undefined}
-            onClick={branchUnavailable ? undefined : onBranch}
+            onClick={onBranch}
           >
             <IconBranchOutline16 />
           </button>
         </Tooltip>
       )}
-      {onBranch !== undefined && branchUnavailable && (
-        <span id={reasonId} className={css.visuallyHidden}>{t('message.branchUnavailable')}</span>
+      {onDelete !== undefined && (
+        <Tooltip label={t('message.delete')} side="bottom">
+          <button type="button" className={css.action} aria-label={t('message.delete')} onClick={onDelete}>
+            <IconTrashOutline16 />
+          </button>
+        </Tooltip>
       )}
       {usageAction}
       {clock === 'end' ? clockEl : null}

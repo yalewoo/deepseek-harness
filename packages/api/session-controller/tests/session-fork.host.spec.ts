@@ -20,7 +20,10 @@ function request<P>(payload: P): P {
   return payload
 }
 
-async function composed(workspaces: readonly Workspace[] = []): Promise<Context> {
+async function composed(
+  workspaces: readonly Workspace[] = [],
+  followup: Agent['followup'] = (() => undefined) as Agent['followup'],
+): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
   await ctx.plugin(SystemPrompt, { personaPrefix: '' })
@@ -38,7 +41,7 @@ async function composed(workspaces: readonly Workspace[] = []): Promise<Context>
       })
       const agent = {} as Agent
       const agentCtx = ownerCtx
-      Object.assign(agent, { id: session.id, session, status: 'idle', ctx: agentCtx })
+      Object.assign(agent, { id: session.id, session, status: 'idle', ctx: agentCtx, followup })
       await options.setup?.(agentCtx, agent)
       ctx.agents.register(agent)
       return { agent, dispose: () => Promise.resolve() }
@@ -100,6 +103,38 @@ describe('sessions.fork', () => {
     ])
     expect(child?.header.parentSession).toBe(source.id)
     expect(child?.header.cwd).toBe('/proj')
+    await ctx.fiber.dispose()
+  })
+
+  it('can derive the prefix before the selected completed turn', async () => {
+    const ctx = await composed()
+    const source = liveAgent(ctx, 'session-source', 2)
+    const response = await remote(ctx).fork(request({
+      sessionId: source.id,
+      atSeq: 4,
+      mode: 'before-turn',
+    }))
+    expect(response.ok).toBe(true)
+    if (!response.ok) return
+    expect(ctx.sessions.get(response.value.sessionId)?.snapshotEvents().map(event => event.type)).toEqual([
+      'turn/start', 'user/message', 'turn/end', 'session/end-seed',
+    ])
+    await ctx.fiber.dispose()
+  })
+
+  it('can rerun the user message from the selected completed turn', async () => {
+    const followup = vi.fn()
+    const ctx = await composed([], followup as Agent['followup'])
+    const source = liveAgent(ctx, 'session-source', 2)
+    const response = await remote(ctx).fork(request({
+      sessionId: source.id,
+      atSeq: 4,
+      mode: 'rerun-turn',
+    }))
+    expect(response.ok).toBe(true)
+    expect(followup).toHaveBeenCalledWith(expect.objectContaining({
+      content: [{ type: 'text', text: 'prompt 2' }],
+    }))
     await ctx.fiber.dispose()
   })
 

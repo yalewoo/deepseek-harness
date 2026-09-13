@@ -1311,7 +1311,7 @@ describe('built-in conversation node Definitions', () => {
     ])
   })
 
-  it('keeps branching unavailable when a tool result follows the closing Assistant', () => {
+  it('keeps the closing Assistant when a tool result follows it', () => {
     const value = assembler([
       at(1, 'turn/start', { turn: 1 }),
       at(2, 'step/start', { turn: 1, step: 1 }),
@@ -1332,7 +1332,6 @@ describe('built-in conversation node Definitions', () => {
 
     const tail = node(snapshot(value), 'turn-tail')?.data as TurnTailChatData
     expect(tail.closing?.finalNode.seq).toBe(3)
-    expect(tail.branchUnavailable).toBe(true)
   })
 
   it('publishes exact Turn usage only after pagination supplies the full lifecycle window', () => {

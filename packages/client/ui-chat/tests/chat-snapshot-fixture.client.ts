@@ -456,11 +456,6 @@ export function chatSnapshotFixture(input: {
         && candidate.blocks.some(block => block.kind === 'text' && block.text.trim() !== ''))
       .map(assistantData)
       .at(-1) ?? null
-    const preceding = nodes.findLast((candidate) => {
-      const location = candidate.location
-      return (location.kind === 'turn' || location.kind === 'step')
-        && location.turn.turn === turnNumber
-    })
     const metrics = deriveTurnMetrics(legacy.nodes).get(turnNumber)
     const tokenUsage = input.turnUsages?.get(turnNumber)
     const tailData = {
@@ -468,9 +463,6 @@ export function chatSnapshotFixture(input: {
       seq: endSeq,
       time: turn.end?.time ?? 0,
       closing,
-      branchUnavailable: closing === null
-        || preceding?.kind !== 'assistant-step'
-        || (preceding.data as ReturnType<typeof assistantData>).finalNode.seq !== closing.finalNode.seq,
       ...metrics?.ttftMs === undefined ? {} : { ttftMs: metrics.ttftMs },
       ...metrics?.tokensPerSecond === undefined ? {} : { tokensPerSecond: metrics.tokensPerSecond },
       ...tokenUsage === undefined ? {} : { tokenUsage },

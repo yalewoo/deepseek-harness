@@ -263,7 +263,9 @@ function makeHarness(
     save: (position) => { savedScroll = position },
     read: () => savedScroll,
   }
-  const forkAt = vi.fn()
+  const branchAt = vi.fn()
+  const regenerateAt = vi.fn()
+  const deleteAt = vi.fn()
   // Rows and the harness must observe the same chat-store instance.
   const chat = createChatStore().create()
   const transcriptView = createSnapshotStore<TranscriptViewMode>('compact')
@@ -403,7 +405,9 @@ function makeHarness(
     loadThrough,
     loadImage: vi.fn(() => Promise.reject(new Error('not used'))),
     chatScroll,
-    forkAt,
+    branchAt,
+    regenerateAt,
+    deleteAt,
     // Absent-service default; mention tests override with a real resolver.
     fileMentions: () => undefined,
     t,
@@ -430,7 +434,7 @@ function makeHarness(
     set, setSession: session.set, setChat: chatSource.set, ChatView, props,
     openFile, openSkill, loadOlder, loadThrough, openView,
     setOutline: (value: unknown) => { outlineValue = value },
-    chatScroll, forkAt, toolOwners,
+    chatScroll, branchAt, regenerateAt, deleteAt, toolOwners,
     setTranscriptView: (mode: TranscriptViewMode) => { transcriptView.set(mode) },
     setNodeRenderer: (renderer: React.ComponentProps<typeof ChatNodeSeat>['renderSlot']) => {
       nodeSlotOverride = renderer
@@ -1024,7 +1028,7 @@ describe('ChatView', () => {
     expect(branchButtons).toHaveLength(1)
     expect(branchButtons[0]!.getAttribute('aria-disabled')).toBeNull()
     fireEvent.click(branchButtons[0]!)
-    expect(h.forkAt).toHaveBeenCalledWith(1)
+    expect(h.branchAt).toHaveBeenCalledWith(1, 'assistant')
   })
 
   it('keeps a later pending occurrence visible when it reuses a durable MessageId', () => {
@@ -1331,11 +1335,12 @@ describe('ChatView', () => {
       turnEnds: new Map([[1, 4], [2, 6]]),
     })
     const view = render(<h.ChatView {...h.props} />)
-    // Branch renders only under assistant answers; user bubbles keep copy alone.
+    // Every durable user and finalized assistant message exposes branch.
     expect(view.getAllByRole('button', { name: '复制' })).toHaveLength(4)
     const branchButtons = view.getAllByRole('button', { name: '在新对话中分支' })
-    expect(branchButtons).toHaveLength(2)
-    expect(branchButtons.map(button => button.getAttribute('aria-disabled'))).toEqual([null, null])
+    expect(branchButtons).toHaveLength(4)
+    expect(view.getAllByRole('button', { name: '重新生成' })).toHaveLength(2)
+    expect(view.getAllByRole('button', { name: '删除此消息及后续内容' })).toHaveLength(4)
   })
 
   it('folds Think and Tool rows before the final answer without unmounting them', () => {
@@ -1978,21 +1983,20 @@ describe('ChatView', () => {
     expect(view.queryByText(/用时/)).toBeNull()
   })
 
-  it('enables fork only on the finalized assistant at the completed transcript tail', () => {
+  it('enables branch on both user and finalized assistant messages', () => {
     const h = makeHarness({
       nodes: [user(1, 'question'), assistant(2, 'answer')],
       turnEnds: new Map([[1, 3]]),
     })
     const view = render(<h.ChatView {...h.props} />)
-    // The user bubble offers no branch; the settled answer's is live.
     const buttons = view.getAllByRole('button', { name: '在新对话中分支' })
-    expect(buttons).toHaveLength(1)
-    expect(buttons[0]!.getAttribute('aria-disabled')).toBeNull()
+    expect(buttons).toHaveLength(2)
     fireEvent.click(buttons[0]!)
-    expect(h.forkAt.mock.calls).toEqual([[2]])
+    fireEvent.click(buttons[1]!)
+    expect(h.branchAt.mock.calls).toEqual([[1, 'user'], [2, 'assistant']])
   })
 
-  it('disables fork when the indexed Turn has a later steering Node', () => {
+  it('keeps assistant branch available when the indexed Turn has a later steering Node', () => {
     const base = chatSnapshotFixture({
       nodes: [user(1, 'question'), assistant(2, 'answer')],
       turnEnds: new Map([[1, 4]]),
@@ -2008,13 +2012,13 @@ describe('ChatView', () => {
     }
     const h = makeHarness({}, {}, chat)
     const view = render(<h.ChatView {...h.props} />)
-    const branch = view.getByRole('button', { name: '在新对话中分支' })
-    expect(branch.getAttribute('aria-disabled')).toBe('true')
-    fireEvent.click(branch)
-    expect(h.forkAt).not.toHaveBeenCalled()
+    const branches = view.getAllByRole('button', { name: '在新对话中分支' })
+    expect(branches).toHaveLength(2)
+    fireEvent.click(branches[1]!)
+    expect(h.branchAt).toHaveBeenCalledWith(2, 'assistant')
   })
 
-  it('keeps final content actions but disables branch when Tool and interrupted Think follow it', () => {
+  it('keeps final content actions available when Tool and interrupted Think follow it', () => {
     const interruptedThink: AssistantMessageNode = {
       kind: 'assistant', seq: 4.1, time: 4_100, turn: 1, step: 2,
       blocks: [{ kind: 'reasoning', text: 'bad path' }], interrupted: true,
@@ -2026,10 +2030,9 @@ describe('ChatView', () => {
     const view = render(<h.ChatView {...h.props} />)
     expect(view.getAllByRole('button', { name: '复制' })).toHaveLength(2)
     const buttons = view.getAllByRole('button', { name: '在新对话中分支' })
-    expect(buttons).toHaveLength(1)
-    expect(buttons[0]!.getAttribute('aria-disabled')).toBe('true')
-    fireEvent.click(buttons[0]!)
-    expect(h.forkAt).not.toHaveBeenCalled()
+    expect(buttons).toHaveLength(2)
+    fireEvent.click(buttons[1]!)
+    expect(h.branchAt).toHaveBeenCalledWith(2, 'assistant')
   })
 
   it('renders assistant Markdown across history, streaming, final, and interrupted states while user text stays literal', () => {
