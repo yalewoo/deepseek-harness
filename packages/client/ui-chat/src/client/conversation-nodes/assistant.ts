@@ -343,7 +343,8 @@ export const assistantDefinition: ConversationNodeDefinition<AssistantState> = {
     if (data === undefined) return null
     const settled = data.finalNode
     const visible = settled === undefined ? state.visibleBlocks > 0 : hasVisibleContent(data.blocks)
-    if (settled === undefined && !visible) {
+    const streamingToolCall = settled === undefined && data.blocks.some(block => block.kind === 'tool-call')
+    if (settled === undefined && !visible && !streamingToolCall) {
       const current = context.current.get('chat')
       if (!state.hidden || current === undefined || current === null) return null
     }

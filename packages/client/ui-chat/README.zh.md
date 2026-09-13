@@ -12,6 +12,8 @@ kind: "package-reference"
 
 文件提及提供方同时接收当前查看的会话 ID 与收尾轮次的属主信息，因此继承历史中的链接可以指向 fork 自身。
 
+会话作用域的 `conversation.chat.liveTail` 条目在同一消息流内、持久 Chat 节点之后渲染临时扩展内容。条目通过标准 `useChat` selector 读取状态，并在未激活时不渲染；仅含工具调用的 Assistant 流会保留为隐藏节点，不会增加 transcript 行。
+
 ## 目录
 
 - [引用预览](#reference-previews)

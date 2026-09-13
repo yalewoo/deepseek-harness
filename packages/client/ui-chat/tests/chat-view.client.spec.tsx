@@ -2088,6 +2088,22 @@ describe('ChatView', () => {
     expect(tool.innerHTML).toBe(beforeHtml)
   })
 
+  it('renders live-tail extensions after the durable Chat nodes in the same flow', () => {
+    const h = makeHarness({ nodes: [user(1, 'q')] })
+    const baseRenderSlot = h.props.renderSlot
+    h.props.renderSlot = ((key: string, owner: object, opts?: { fallback?: React.ReactNode }) => (
+      key === 'conversation.chat.liveTail'
+        ? <div data-testid="live-tail-extension">preparing</div>
+        : baseRenderSlot(key as never, owner as never, opts as never)
+    )) as ChatViewSlotProps['renderSlot']
+    const view = render(<h.ChatView {...h.props} />)
+    const flow = view.container.querySelector('[data-chat-flow]')
+    const extension = view.getByTestId('live-tail-extension')
+
+    expect(extension.parentElement).toBe(flow)
+    expect(flow?.lastElementChild).toBe(extension)
+  })
+
   it('streaming leaves neighbor tool rows and history items at zero re-renders', () => {
     const h = makeHarness({
       nodes: [user(1, 'q'), assistant(2, 'old'), toolResult(3, 'a')],
@@ -2209,6 +2225,7 @@ describe('ChatView', () => {
     const h = makeHarness({ nodes: [block] })
     const calls: { key: string; owner: object; entryKey?: string }[] = []
     h.setNodeRenderer(((key: string, owner: object, opts?: { entryKey?: string; fallback?: React.ReactNode }) => {
+      if (key !== 'conversation.chat.node') return opts?.fallback ?? null
       calls.push({ key, owner, ...(opts?.entryKey !== undefined ? { entryKey: opts.entryKey } : {}) })
       return opts?.fallback ?? null
     }) as React.ComponentProps<typeof ChatNodeSeat>['renderSlot'])

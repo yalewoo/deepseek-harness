@@ -867,6 +867,15 @@ describe('built-in conversation node Definitions', () => {
         step: 1,
         chunk: { type: 'tool-call-delta', index: 0, id: 'call-1', name: 'read', argumentsDelta: '' },
       }),
+    ])
+    const streamingToolOnlySnapshot = snapshot(toolOnlyValue)
+    expect(streamingToolOnlySnapshot.order).toEqual([])
+    expect(node(streamingToolOnlySnapshot, 'assistant-step')).toMatchObject({
+      visibility: 'hidden',
+      data: { status: 'running', blocks: [{ kind: 'tool-call', name: 'read' }] },
+    })
+
+    toolOnlyValue.append(
       at(33, 'assistant/message', {
         turn: 4,
         step: 1,
@@ -875,7 +884,8 @@ describe('built-in conversation node Definitions', () => {
           content: [{ type: 'tool-call', id: 'call-1', name: 'read', arguments: '{}' }],
         },
       }, { surfaceOp: 'append' }),
-    ])
+    )
+    toolOnlyValue.flush()
     const toolOnlySnapshot = snapshot(toolOnlyValue)
     expect(toolOnlySnapshot.order).toEqual([])
     expect(node(toolOnlySnapshot, 'assistant-step')?.visibility).toBe('hidden')

@@ -12,6 +12,8 @@ Use this package to render a browser chat from recorded Session conversations, i
 
 File-mention providers receive the viewed Session ID with the closing-turn owner, so links into inherited history can address the fork itself.
 
+Session-scoped `conversation.chat.liveTail` entries render ephemeral extension content after durable Chat nodes in the same flow. They receive the standard `useChat` selector and render nothing while inactive; tool-call-only Assistant streams remain available as hidden nodes without adding transcript rows.
+
 ## Table of Contents
 
 - [Reference previews](#reference-previews)

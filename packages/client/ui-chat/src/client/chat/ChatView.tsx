@@ -800,6 +800,7 @@ export function ChatView({
             renderSlot={renderSlot}
             t={t}
           />
+          {renderSlot('conversation.chat.liveTail', {})}
           {/* No pending placeholders: questions (ui-user-questions) and approvals
               (ApprovalPanel) both take over the composer, so a flow card would
               double-render the same wait. */}
