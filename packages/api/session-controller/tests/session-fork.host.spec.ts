@@ -23,6 +23,7 @@ function request<P>(payload: P): P {
 async function composed(
   workspaces: readonly Workspace[] = [],
   followup: Agent['followup'] = (() => undefined) as Agent['followup'],
+  clearInbox: Agent['inbox']['clear'] = () => {},
 ): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
@@ -41,7 +42,14 @@ async function composed(
       })
       const agent = {} as Agent
       const agentCtx = ownerCtx
-      Object.assign(agent, { id: session.id, session, status: 'idle', ctx: agentCtx, followup })
+      Object.assign(agent, {
+        id: session.id,
+        session,
+        status: 'idle',
+        ctx: agentCtx,
+        inbox: { clear: clearInbox },
+        followup,
+      })
       await options.setup?.(agentCtx, agent)
       ctx.agents.register(agent)
       return { agent, dispose: () => Promise.resolve() }
@@ -146,7 +154,11 @@ describe('sessions.fork', () => {
       sessionIds: [sourceId],
       attachSession: async () => { order.push('attach') },
     } as unknown as Workspace
-    const ctx = await composed([workspace], () => { order.push('replay') })
+    const ctx = await composed(
+      [workspace],
+      () => { order.push('replay') },
+      () => { order.push('clear') },
+    )
     const source = liveAgent(ctx, 'session-source', 1)
 
     const response = await remote(ctx).fork(request({
@@ -155,7 +167,7 @@ describe('sessions.fork', () => {
     }))
 
     expect(response.ok).toBe(true)
-    expect(order).toEqual(['attach', 'replay'])
+    expect(order).toEqual(['clear', 'attach', 'replay'])
     await ctx.fiber.dispose()
   })
 

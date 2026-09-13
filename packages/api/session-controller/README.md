@@ -37,7 +37,7 @@ The Session object also carries local submission echoes: `session.beginSubmissio
 
 The user-invocable `skills/list` metadata includes the winning provider’s optional instruction-file `path`. The composer can preview that file without loading every skill body or activating a cold Agent.
 
-Fork retains the new ordinary Agent under the Session Controller before exposing it to other lifecycle operations. A replay fork completes its destination Workspace attachment before admitting the selected user message; an attachment failure returns without waking the child.
+Fork retains the new ordinary Agent under the Session Controller before exposing it to other lifecycle operations. A fork cut before a turn clears pending inbox state inherited from that boundary. A replay fork then completes its destination Workspace attachment before admitting the selected user message; an attachment failure returns without waking the child.
 
 <a id="session-media-references"></a>
 ## Session media references

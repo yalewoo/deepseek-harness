@@ -343,6 +343,7 @@ export class SessionCommandController {
         setup: composition.setup,
       })
       childAgent = this.agents.retain(child)
+      if (mode !== 'through-turn') childAgent.inbox.clear()
     } catch (error) {
       throw new RemoteError(
         'gateway/internal',
