@@ -164,6 +164,8 @@ describe('WorkspaceBrowser', () => {
       archiveSession,
     })
 
+    expect(screen.queryByRole('checkbox', { name: '全选会话' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '编辑会话' }))
     fireEvent.click(screen.getByRole('checkbox', { name: '全选会话' }))
     expect(screen.getByText('已选择 7 项')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '存档所选' }))
@@ -173,6 +175,8 @@ describe('WorkspaceBrowser', () => {
       for (const item of items) expect(archiveSession).toHaveBeenCalledWith(item.id)
     })
     expect(screen.getByText('已选择 0 项')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '完成' }))
+    expect(screen.queryByRole('checkbox', { name: '全选会话' })).toBeNull()
   })
 
   it('keeps only failed batch-archive sessions selected for retry', async () => {
@@ -185,6 +189,7 @@ describe('WorkspaceBrowser', () => {
       archiveSession,
     })
 
+    fireEvent.click(screen.getByRole('button', { name: '编辑会话' }))
     fireEvent.click(screen.getByRole('checkbox', { name: '全选会话' }))
     fireEvent.click(screen.getByRole('button', { name: '存档所选' }))
 
@@ -193,6 +198,23 @@ describe('WorkspaceBrowser', () => {
     fireEvent.click(screen.getByText('alpha'))
     expect((screen.getByRole('checkbox', { name: '选择会话“session-one”' }) as HTMLInputElement).checked).toBe(false)
     expect((screen.getByRole('checkbox', { name: '选择会话“session-two”' }) as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('uses row clicks for selection only while editing sessions', () => {
+    const open = vi.fn()
+    mount({
+      useSessions: hook(sessionState([summary('session-one', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['session-one'])])),
+      open,
+    })
+
+    fireEvent.click(screen.getByText('alpha'))
+    fireEvent.click(screen.getByRole('button', { name: '编辑会话' }))
+    fireEvent.click(screen.getByText('session-one'))
+
+    expect(open).not.toHaveBeenCalled()
+    expect((screen.getByRole('checkbox', { name: '选择会话“session-one”' }) as HTMLInputElement).checked).toBe(true)
+    expect(screen.queryByRole('button', { name: '会话“session-one”的操作' })).toBeNull()
   })
 
   it('moves focus into Workspace controls without selecting a Session while a main panel is active', () => {

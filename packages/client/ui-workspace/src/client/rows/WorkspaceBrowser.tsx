@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  Button, IconArchiveOutline20, IconCloseFill14, IconPersonalizationOutline16,
+  Button, IconArchiveOutline20, IconCloseFill14, IconEditOutline16, IconPersonalizationOutline16,
   IconProjectAddOutline16, IconSearchOutline16, IconTrashOutline16, Menu, Modal, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
@@ -266,6 +266,8 @@ type SessionTreeProps = Pick<
   onSessionArchive: (sessionId: SessionNode['id']) => void
   /** Sessions selected for a batch archive. */
   selectedSessionIds: readonly SessionId[]
+  /** Whether rows expose batch-selection controls. */
+  sessionSelectionMode: boolean
   /** Update one Session's batch-selection state. */
   onSessionCheckedChange: (sessionId: SessionId, checked: boolean) => void
   /** Session order behavior: fixed after edits, or additionally promoted by user activity. */
@@ -281,7 +283,7 @@ function SessionTree({
   useSessions, useSessionPendingInteraction, startSession, open, forkSession, workspaces, archivedSessionIds,
   workspaceReady, usePanelInfo,
   onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive,
-  selectedSessionIds, onSessionCheckedChange,
+  selectedSessionIds, sessionSelectionMode, onSessionCheckedChange,
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
   sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, home, t,
@@ -593,8 +595,10 @@ function SessionTree({
                     onRename={onSessionRename}
                     onFork={forkSession}
                     onArchive={onSessionArchive}
-                    checked={node.blank ? undefined : selectedSessionIds.includes(node.id)}
-                    onCheckedChange={node.blank
+                    checked={!sessionSelectionMode || node.blank
+                      ? undefined
+                      : selectedSessionIds.includes(node.id)}
+                    onCheckedChange={!sessionSelectionMode || node.blank
                       ? undefined
                       : (checked) => { onSessionCheckedChange(node.id, checked) }}
                     onReveal={node.id === revealSessionId && group.key === revealGroup
@@ -629,7 +633,7 @@ function SessionTree({
 /** The flat "In one list" body: every session is one draggable top-level row. */
 function FlatList({
   useSessions, useSessionPendingInteraction, open, forkSession, onSessionRename, onSessionArchive,
-  selectedSessionIds, onSessionCheckedChange, archivedSessionIds, usePanelInfo,
+  selectedSessionIds, sessionSelectionMode, onSessionCheckedChange, archivedSessionIds, usePanelInfo,
   orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder,
   revealSessionId, onSessionRevealed, t,
 }: Pick<
@@ -641,6 +645,7 @@ function FlatList({
   | 'onSessionRename'
   | 'onSessionArchive'
   | 'selectedSessionIds'
+  | 'sessionSelectionMode'
   | 'onSessionCheckedChange'
   | 'archivedSessionIds'
   | 'usePanelInfo'
@@ -726,8 +731,10 @@ function FlatList({
               onRename={onSessionRename}
               onFork={forkSession}
               onArchive={onSessionArchive}
-              checked={node.blank ? undefined : selectedSessionIds.includes(node.id)}
-              onCheckedChange={node.blank
+              checked={!sessionSelectionMode || node.blank
+                ? undefined
+                : selectedSessionIds.includes(node.id)}
+              onCheckedChange={!sessionSelectionMode || node.blank
                 ? undefined
                 : (checked) => { onSessionCheckedChange(node.id, checked) }}
               onReveal={node.id === revealSessionId
@@ -961,6 +968,7 @@ export function WorkspaceBrowser({
   const workspaceStreamState = useWorkspaces(state => state.state)
   const archivedSessionIds = useWorkspaces(state => state.archivedSessionIds)
   const [archiveView, setArchiveView] = useState(false)
+  const [sessionSelectionMode, setSessionSelectionMode] = useState(false)
   const sessionList = useSessions(state => state)
   const activeSessionIds = useMemo(() => {
     const archived = new Set(archivedSessionIds)
@@ -995,6 +1003,12 @@ export function WorkspaceBrowser({
       setSelectedSessionIds(failed)
       setSessionArchiveError(failed.length === 0 ? null : t('archive.archiveFailed', { n: failed.length }))
     })
+  }
+  const leaveSessionSelection = (): void => {
+    if (sessionArchiving) return
+    setSessionSelectionMode(false)
+    setSelectedSessionIds([])
+    setSessionArchiveError(null)
   }
   // Live occupancy of this surface's directory-flow hole (the same source the
   // flow reads): a composition without a picking affordance can add nothing.
@@ -1291,10 +1305,12 @@ export function WorkspaceBrowser({
           <span className={clsx(css.sectionLabel, css.wide, searchExpanded && css.sectionLabelHidden)}>
             {archiveView
               ? t('section.archived')
-              : groupBy === 'flat' ? t('section.sessions') : t('section.workspaces')}
+              : sessionSelectionMode
+                ? t('selection.title')
+                : groupBy === 'flat' ? t('section.sessions') : t('section.workspaces')}
           </span>
         )}
-        {wide && !archiveView && (
+        {wide && !archiveView && !sessionSelectionMode && (
           <div className={clsx(css.searchSlot, searchExpanded && css.searchSlotExpanded)}>
             <div
               ref={searchRoot}
@@ -1352,7 +1368,7 @@ export function WorkspaceBrowser({
           </div>
         )}
         <div className={clsx(css.headerActions, wide && searchExpanded && css.headerActionsHidden)}>
-          {wide && (
+          {wide && !sessionSelectionMode && (
             <Tooltip label={archiveView ? t('archive.back') : t('archive.show')} side="bottom" delayMs={500}>
               <button
                 type="button"
@@ -1370,6 +1386,29 @@ export function WorkspaceBrowser({
             </Tooltip>
           )}
           {wide && !archiveView && (
+            <Tooltip label={sessionSelectionMode ? t('selection.exit') : t('selection.enter')} side="bottom" delayMs={500}>
+              <button
+                type="button"
+                className={clsx(css.iconButton, sessionSelectionMode && css.iconButtonActive)}
+                aria-label={sessionSelectionMode ? t('selection.exit') : t('selection.enter')}
+                aria-pressed={sessionSelectionMode}
+                disabled={sessionArchiving}
+                onClick={() => {
+                  if (sessionSelectionMode) {
+                    leaveSessionSelection()
+                    return
+                  }
+                  setSessionSelectionMode(true)
+                  setQuery('')
+                  setSearchExpanded(false)
+                  setWsPickerOpen(false)
+                }}
+              >
+                {sessionSelectionMode ? <IconCloseFill14 /> : <IconEditOutline16 />}
+              </button>
+            </Tooltip>
+          )}
+          {wide && !archiveView && !sessionSelectionMode && (
             <ViewOptionsMenu
               groupBy={groupBy}
               orderBy={orderBy}
@@ -1381,7 +1420,7 @@ export function WorkspaceBrowser({
           {/* Adding is the button's one action, so a composition with no
               picking affordance has nothing to offer here: the region hides the
               button rather than leaving a dead one in the header. */}
-          {directoryFlowAvailable && (
+          {directoryFlowAvailable && !sessionSelectionMode && (
             <Tooltip label={t('workspace.add')} side="bottom" delayMs={500}>
               <button
                 ref={wsPlusRef}
@@ -1437,7 +1476,7 @@ export function WorkspaceBrowser({
       {/* Always-mounted seat keeps the region's flex slot while the list
           itself is wide-only. */}
       <div className={css.listArea}>
-        {wide && !archiveView && normalizedQuery === '' && activeSessionIds.length > 0 && (
+        {wide && !archiveView && sessionSelectionMode && activeSessionIds.length > 0 && (
           <>
             <div className={css.archiveToolbar}>
               <label className={css.archiveSelectAll}>
@@ -1504,6 +1543,7 @@ export function WorkspaceBrowser({
                   open={open} forkSession={forkSession}
                   onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
                   selectedSessionIds={selectedSessionIds}
+                  sessionSelectionMode={sessionSelectionMode}
                   onSessionCheckedChange={onSessionCheckedChange}
                   archivedSessionIds={archivedSessionIds}
                   orderBy={orderBy}
@@ -1524,6 +1564,7 @@ export function WorkspaceBrowser({
                   onSessionRename={onSessionRename}
                   onSessionArchive={onSessionArchive}
                   selectedSessionIds={selectedSessionIds}
+                  sessionSelectionMode={sessionSelectionMode}
                   onSessionCheckedChange={onSessionCheckedChange}
                   forkSession={forkSession}
                   workspaces={workspaces}

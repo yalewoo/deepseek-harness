@@ -410,6 +410,7 @@ export function SessionNodeItem({
   const statuses = sessionStatuses(node, t)
   const primaryStatus = statuses[0]
   const showStatus = primaryStatus.state !== 'done' || row.completed
+  const selecting = checked !== undefined && onCheckedChange !== undefined
   const [menuOpen, setMenuOpen] = useState(false)
   const rowRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -437,17 +438,20 @@ export function SessionNodeItem({
       )}
       role="treeitem"
       aria-selected={selected}
-      onClick={() => { onOpen(node.id) }}
-      draggable={drag !== undefined}
-      onDragStart={drag === undefined
+      onClick={() => {
+        if (selecting) onCheckedChange(!checked)
+        else onOpen(node.id)
+      }}
+      draggable={drag !== undefined && !selecting}
+      onDragStart={drag === undefined || selecting
         ? undefined
         : (e) => {
           e.dataTransfer.effectAllowed = 'move'
           e.dataTransfer.setData('text/plain', node.id)
           drag.start()
         }}
-      onDragEnd={drag?.end}
-      onDragOver={drag === undefined
+      onDragEnd={selecting ? undefined : drag?.end}
+      onDragOver={drag === undefined || selecting
         ? undefined
         : (e) => {
           if (!drag.active) return
@@ -455,7 +459,7 @@ export function SessionNodeItem({
           e.dataTransfer.dropEffect = 'move'
           drag.hover(rowHalf(e))
         }}
-      onDrop={drag === undefined
+      onDrop={drag === undefined || selecting
         ? undefined
         : (e) => {
           if (!drag.active) return
@@ -463,7 +467,7 @@ export function SessionNodeItem({
           drag.drop(rowHalf(e))
         }}
     >
-      {checked !== undefined && onCheckedChange !== undefined && (
+      {selecting && (
         <input
           className={css.sessionCheckbox}
           type="checkbox"
@@ -488,7 +492,7 @@ export function SessionNodeItem({
           (rename/fork/archive) would all act on content that does not
           exist — both trailing cells stay off until the first prompt. */}
       {!row.blank && <span className={css.time}>{timeLabel(row.updatedAt, now, t)}</span>}
-      {!row.blank && (
+      {!row.blank && !selecting && (
         <span className={css.rowActions}>
           <Menu
             open={menuOpen}
@@ -521,7 +525,7 @@ export function SessionNodeItem({
     <HoverCard
       anchor={ownRow}
       content={<SessionHoverContent node={node} now={now} t={t} />}
-      disabled={menuOpen || drag?.active === true}
+      disabled={selecting || menuOpen || drag?.active === true}
       copyText={row.blank ? undefined : row.title}
       copyLabel={t('copy')}
       copiedLabel={t('hover.copied')}
