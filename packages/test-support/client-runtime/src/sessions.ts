@@ -199,6 +199,7 @@ export class TestSessions implements ISessions {
   readonly calls: {
     method: 'create' | 'open' | 'openSubagent' | 'setSubagentCatalogOpen' | 'refreshSubagents'
       | 'clear' | 'refresh' | 'search' | 'fork'
+      | 'delete'
     args: unknown[]
   }[] = []
 
@@ -515,6 +516,12 @@ export class TestSessions implements ISessions {
   fork(opts: { sessionId: SessionId; atSeq?: number; increaseTitle?: boolean }): Promise<SessionId> {
     this.calls.push({ method: 'fork', args: [opts] })
     return Promise.resolve(opts.sessionId)
+  }
+
+  /** Permanently remove one fixture Session (recorded). */
+  async delete(sessionId: SessionId): Promise<void> {
+    this.calls.push({ method: 'delete', args: [sessionId] })
+    await this.remove(sessionId)
   }
 
   /**

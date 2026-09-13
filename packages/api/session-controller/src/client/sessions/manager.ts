@@ -619,6 +619,13 @@ export class SessionManager {
     return result
   }
 
+  /** Permanently delete one archived Session and immediately reconcile the local list. */
+  async delete(sessionId: SessionId): Promise<RemoteResult<{ deleted: true }>> {
+    const result = await this.remote.session.delete({ sessionId })
+    if (result.ok) this.handleSessionRemoved(sessionId)
+    return result
+  }
+
   /**
    * Insert-or-enrich a locally synthesized summary: a new id prepends; an
    * existing entry only gains fields it lacks (the session-added frame and the

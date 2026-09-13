@@ -457,6 +457,14 @@ export class JsonlBackendTracker {
     return this.pending.has(id)
   }
 
+  /** Whether this process still owns any handle for one Session. */
+  hasOpenHandle(id: SessionId): boolean {
+    for (const handle of this.openHandles) {
+      if (handle.id === id) return true
+    }
+    return false
+  }
+
   /**
    * Iterate the pending sessions for listing.
    * @returns the pending entries, keyed by session id.

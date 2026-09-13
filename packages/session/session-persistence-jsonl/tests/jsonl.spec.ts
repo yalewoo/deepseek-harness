@@ -7,7 +7,9 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { scheduler } from 'node:timers/promises'
 import { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
-import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
+import {
+  SessionAlreadyOwnedError, SessionPersistenceNotFoundError, type SessionPersistence,
+} from '@deepseek-ai/dsh-session-persistence'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import {
   assertNoRetiredHeaderFields, encodeSegment, eventLines, generationLogFilename, generationLogPath,
@@ -333,6 +335,40 @@ runPersistenceContract('jsonl-none', async () => {
       await appendFile(rawLogPath(dir, cwd, id), '{"type":"assistant/chunk","seq":8,"ti')
     },
   }
+})
+
+describe('session deletion', () => {
+  it('removes every artifact and disappears from stat, list, and open', async () => {
+    root = await freshRoot()
+    const ctx = new Context()
+    liveContexts.push(ctx)
+    await ctx.plugin(JsonlSessionPersistence, { root, compression: 'none' })
+    const header = meta('delete-all-generations')
+    await writeLog(ctx.sessionPersistence, header, oneTurnLog())
+    const directory = dirname(rawLogPath(root, header.cwd, header.id))
+    await writeFile(join(directory, 'session.v1.jsonl'), 'historical')
+
+    await ctx.sessionPersistence.delete(header.id)
+
+    await expect(stat(directory)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(ctx.sessionPersistence.stat(header.id)).resolves.toBeUndefined()
+    expect((await ctx.sessionPersistence.list()).map(item => item.header.id)).not.toContain(header.id)
+    await expect(ctx.sessionPersistence.open(header.id, 'read')).rejects.toBeInstanceOf(SessionPersistenceNotFoundError)
+  })
+
+  it('rejects deletion while a local handle is open', async () => {
+    root = await freshRoot()
+    const ctx = new Context()
+    liveContexts.push(ctx)
+    await ctx.plugin(JsonlSessionPersistence, { root, compression: 'none' })
+    const header = meta('delete-owned')
+    const writer = await ctx.sessionPersistence.create(header)
+    await writer.flush()
+
+    await expect(ctx.sessionPersistence.delete(header.id)).rejects.toBeInstanceOf(SessionAlreadyOwnedError)
+    await writer.close()
+    await expect(ctx.sessionPersistence.delete(header.id)).resolves.toBeUndefined()
+  })
 })
 
 runLiveWritePathContract('jsonl', LIVE_WRITE_BATCH_MAX_DELAY_MS, async () => {

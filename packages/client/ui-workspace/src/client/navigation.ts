@@ -48,6 +48,10 @@ export interface UiWorkspace {
    * @param sessionId - Session to archive.
    */
   archiveSession(sessionId: SessionId): Promise<void>
+  /** Restore one archived Session to the active browser. */
+  unarchiveSession(sessionId: SessionId): Promise<void>
+  /** Permanently delete one archived Session. */
+  deleteSession(sessionId: SessionId): Promise<void>
   /**
    * Open the Host-native directory picker.
    * @returns the selected directory, or null when cancelled.
@@ -174,6 +178,15 @@ class UiWorkspaceService extends Service implements UiWorkspace {
 
   async archiveSession(sessionId: SessionId): Promise<void> {
     await this.workspaces.archiveSession(sessionId)
+    if (this.sessions.list.getSnapshot().current === sessionId) this.sessions.clear()
+  }
+
+  async unarchiveSession(sessionId: SessionId): Promise<void> {
+    await this.workspaces.unarchiveSession(sessionId)
+  }
+
+  async deleteSession(sessionId: SessionId): Promise<void> {
+    await this.sessions.delete(sessionId)
   }
 
   async pickDirectory(): Promise<string | null> {
@@ -198,7 +211,6 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     let initial: 'waiting' | 'connecting' | 'done' = 'waiting'
     const reconcile = (): void => {
       if (this.lifetime.signal.aborted) return
-      if (this.clearArchivedCurrent()) return
       if (initial !== 'waiting') return
       const workspace = this.workspaces.list.getSnapshot()
       const sessions = this.sessions.list.getSnapshot()
@@ -236,15 +248,6 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       disposeSessions()
       disposeWorkspaces()
     }
-  }
-
-  /** @returns true when an archived current selection was cleared. */
-  private clearArchivedCurrent(): boolean {
-    const current = this.sessions.list.getSnapshot().current
-    if (current === undefined
-      || !this.workspaces.list.getSnapshot().archivedSessionIds.includes(current)) return false
-    this.sessions.clear()
-    return true
   }
 
 }

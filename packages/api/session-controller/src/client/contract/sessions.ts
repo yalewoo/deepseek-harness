@@ -100,6 +100,8 @@ export interface ISessions {
     increaseTitle?: boolean
     mode?: 'through-turn' | 'before-turn' | 'rerun-turn'
   }): Promise<SessionId>
+  /** Permanently delete one archived Session. */
+  delete(sessionId: SessionId): Promise<void>
   /**
    * Resolve an Agent-scoped context view (use-and-discard).
    * @param id - session id.

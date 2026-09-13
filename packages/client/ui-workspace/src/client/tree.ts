@@ -322,6 +322,24 @@ export function deriveGroups(
   return groups
 }
 
+/** Derive archived ordinary Sessions newest-first for the management view. */
+export function deriveArchived(
+  list: SessionListState,
+  archivedSessionIds: readonly SessionId[],
+  pendingInteractions: SessionPendingInteractions,
+): SessionNode[] {
+  const descendants = indexSubagentDescendants(list.byId)
+  return archivedSessionIds
+    .flatMap((id) => {
+      const summary = list.byId[id]
+      return summary === undefined || summary.origin === 'subagent'
+        ? []
+        : [summary]
+    })
+    .sort(byRecency)
+    .map(summary => sessionNode(summary, descendants, pendingInteractions))
+}
+
 /**
  * Derive the flat session list ("In one list" mode): every session — fork
  * children included — as a top-level row, strictly newest-first. No grouping,

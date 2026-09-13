@@ -13,7 +13,7 @@ import {
   sessionFormatCatalog,
 } from '@deepseek-ai/dsh-session-format-catalog'
 import { readdirSync, type Dirent } from 'node:fs'
-import { open, mkdir, readdir, realpath, link, rm, stat, truncate } from 'node:fs/promises'
+import { open, mkdir, readdir, realpath, link, rename, rm, stat, truncate } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { scheduler } from 'node:timers/promises'
@@ -21,11 +21,12 @@ import { randomBytes } from 'node:crypto'
 import {
   SessionPersistence, SessionPersistenceRevision, SessionFormatUnsupportedError,
   SessionPersistenceCorruptionError,
-  SessionAlreadyExistsError, SessionPersistenceNotFoundError,
+  SessionAlreadyExistsError, SessionAlreadyOwnedError, SessionPersistenceNotFoundError,
   assertStoredId, materializeCreateHeader, sessionFormatVersionRefusal, validateStoredEvents,
   type SessionAccess, type SessionHandle,
   type SessionHandleReadResult,
   type SessionLocation, type SessionPersistenceCreateOptions,
+  type SessionPersistenceDeleteOptions,
   type SessionPersistenceListOptions, type SessionPersistenceOpenOptions,
   type SessionPersistenceSnapshot, type SessionPersistenceStatOptions,
   type SessionPersistenceRevision as PersistenceRevision,
@@ -404,6 +405,29 @@ class JsonlSessionPersistence extends SessionPersistence {
       }
       throw failure
     }
+  }
+
+  /** Permanently remove one closed Session directory under an exclusive lease. */
+  override async delete(id: SessionId, options?: SessionPersistenceDeleteOptions): Promise<void> {
+    options?.signal?.throwIfAborted()
+    await this.ensureRootEncoding()
+    if (this.tracker.hasOpenHandle(id) || this.tracker.hasPending(id)) {
+      throw new SessionAlreadyOwnedError(id)
+    }
+    const selected = await this.findLog(id, options?.signal)
+    if (selected === undefined) throw new SessionPersistenceNotFoundError(id)
+    const directory = dirname(selected.sourcePath)
+    const lease = await this.acquireLease(id, undefined, directory)
+    const retiredDirectory = `${directory}.deleting-${randomBytes(8).toString('hex')}`
+    try {
+      options?.signal?.throwIfAborted()
+      this.coldLogMemo.delete(id)
+      this.migrationPreparations.delete(id)
+      await rename(directory, retiredDirectory)
+    } finally {
+      await lease.release()
+    }
+    await rm(retiredDirectory, { recursive: true })
   }
 
   /**

@@ -111,6 +111,7 @@ class FakeSessions {
   readonly open: ReturnType<typeof vi.fn<(id: SessionId) => void>>
   readonly clear: ReturnType<typeof vi.fn<() => void>>
   readonly fork = vi.fn<ISessions['fork']>(async () => sid('forked'))
+  readonly delete = vi.fn<ISessions['delete']>(async () => {})
 
   constructor(initial: SessionListState) {
     this.list = new MutableSource(initial)
@@ -128,6 +129,7 @@ class FakeSessions {
 class FakeWorkspaces implements IWorkspaces {
   readonly list: MutableSource<WorkspaceSnapshot>
   readonly archiveCalls: SessionId[] = []
+  readonly unarchiveCalls: SessionId[] = []
   onArchive: IWorkspaces['archiveSession'] = async (sessionId) => {
     this.list.update(state => ({
       ...state,
@@ -148,6 +150,15 @@ class FakeWorkspaces implements IWorkspaces {
   archiveSession(sessionId: SessionId): Promise<void> {
     this.archiveCalls.push(sessionId)
     return this.onArchive(sessionId)
+  }
+
+  unarchiveSession(sessionId: SessionId): Promise<void> {
+    this.unarchiveCalls.push(sessionId)
+    this.list.update(state => ({
+      ...state,
+      archivedSessionIds: state.archivedSessionIds.filter(id => id !== sessionId),
+    }))
+    return Promise.resolve()
   }
 }
 
@@ -517,7 +528,7 @@ describe('UiWorkspaceService', () => {
     expect(failure.sessions.create).toHaveBeenCalledOnce()
   })
 
-  it('clears a current Session only after it enters the archive baseline', () => {
+  it('keeps archived Sessions selectable and clears only the Session explicitly archived', async () => {
     const current = summary('current')
     const idle = summary('idle')
     const b = bench({
@@ -528,16 +539,19 @@ describe('UiWorkspaceService', () => {
     b.workspaces.list.update(state => ({ ...state, archivedSessionIds: [idle.id] }))
     expect(b.sessions.clear).not.toHaveBeenCalled()
     b.workspaces.list.update(state => ({ ...state, archivedSessionIds: [current.id] }))
-    expect(b.sessions.clear).toHaveBeenCalledOnce()
+    expect(b.sessions.clear).not.toHaveBeenCalled()
 
     b.sessions.open(idle.id)
     b.workspaces.list.update(state => ({ ...state, archivedSessionIds: [idle.id] }))
-    expect(b.sessions.clear).toHaveBeenCalledTimes(2)
+    expect(b.sessions.clear).not.toHaveBeenCalled()
 
     const archived = bench({
       sessions: sessionState([current], current.id),
       workspaces: workspaceState([workspace('one', [current.id])], [current.id]),
     })
+    expect(archived.sessions.clear).not.toHaveBeenCalled()
+
+    await archived.uiWorkspace.archiveSession(current.id)
     expect(archived.sessions.clear).toHaveBeenCalledOnce()
   })
 
@@ -551,6 +565,17 @@ describe('UiWorkspaceService', () => {
     b.workspaces.onArchive = () => Promise.reject(new Error('archive rejected'))
     await expect(b.uiWorkspace.archiveSession(idle)).rejects.toThrow('archive rejected')
     expect(b.workspaces.archiveCalls).toEqual([idle, idle])
+  })
+
+  it('forwards archived Session restore and permanent deletion', async () => {
+    const archived = sid('archived')
+    const b = bench({ workspaces: workspaceState([], [archived]) })
+
+    await b.uiWorkspace.unarchiveSession(archived)
+    await b.uiWorkspace.deleteSession(archived)
+
+    expect(b.workspaces.unarchiveCalls).toEqual([archived])
+    expect(b.sessions.delete).toHaveBeenCalledWith(archived)
   })
 
   it('passes directory operations to the Host and preserves structured browse failures', async () => {

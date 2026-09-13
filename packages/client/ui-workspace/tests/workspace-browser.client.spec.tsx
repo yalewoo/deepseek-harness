@@ -93,6 +93,8 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     renameWorkspace: vi.fn(async () => {}),
     deleteWorkspace: vi.fn(async () => {}),
     archiveSession: vi.fn(async () => {}),
+    unarchiveSession: vi.fn(async () => {}),
+    deleteSession: vi.fn(async () => {}),
     insertWorkspaceBefore: vi.fn(async () => {}),
     insertSessionBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
@@ -113,6 +115,46 @@ function rerender(b: ReturnType<typeof mount>, overrides: Partial<WorkspaceBrows
 }
 
 describe('WorkspaceBrowser', () => {
+  it('opens archived conversations and restores one from its row menu', async () => {
+    const open = vi.fn()
+    const unarchiveSession = vi.fn(async () => {})
+    mount({
+      useSessions: hook(sessionState([summary('archived-one', 20)])),
+      useWorkspaces: hook(workspaceState([], [sid('archived-one')])),
+      open,
+      unarchiveSession,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '查看已归档会话' }))
+    fireEvent.click(screen.getByText('archived-one'))
+    expect(open).toHaveBeenCalledWith(sid('archived-one'))
+
+    fireEvent.click(screen.getByRole('button', { name: '会话“archived-one”的操作' }))
+    fireEvent.click(await screen.findByText('恢复会话'))
+    await waitFor(() => { expect(unarchiveSession).toHaveBeenCalledWith(sid('archived-one')) })
+  })
+
+  it('selects all archived conversations and confirms batch deletion', async () => {
+    const deleteSession = vi.fn(async () => {})
+    mount({
+      useSessions: hook(sessionState([summary('archived-one', 20), summary('archived-two', 10)])),
+      useWorkspaces: hook(workspaceState([], [sid('archived-one'), sid('archived-two')])),
+      deleteSession,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '查看已归档会话' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '全选已归档会话' }))
+    fireEvent.click(screen.getByRole('button', { name: '删除所选' }))
+    expect(screen.getByText('将永久删除所选 2 个会话及其全部对话记录。此操作无法撤销。')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '永久删除' }))
+
+    await waitFor(() => {
+      expect(deleteSession).toHaveBeenCalledTimes(2)
+      expect(deleteSession).toHaveBeenCalledWith(sid('archived-one'))
+      expect(deleteSession).toHaveBeenCalledWith(sid('archived-two'))
+    })
+  })
+
   it('moves focus into Workspace controls without selecting a Session while a main panel is active', () => {
     const panelInfo = { activePanelId: 'panel-a' as MainPanelId }
     const b = mount({

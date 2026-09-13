@@ -34,6 +34,11 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
+.iconButtonActive {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
 /* Section header: title, an inline search control, and the two trailing
    actions. Expanding search collapses the action cluster and takes its room. */
 .sectionHeader {
@@ -106,7 +111,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  max-width: 60px;
+  max-width: 92px;
   opacity: 1;
   overflow: hidden;
   visibility: visible;
@@ -348,6 +353,53 @@
      above the gradient instead of under it. */
   padding-bottom: 16px;
   scrollbar-gutter: stable;
+}
+
+.archiveToolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 10px 4px 8px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.archiveSelectAll {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.archiveSelectAll input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--dsw-alias-state-business-primary);
+}
+
+.archiveDeleteButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  padding: 4px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.archiveDeleteButton:hover:not(:disabled) {
+  color: var(--dsw-alias-state-danger-primary);
+}
+
+.archiveDeleteButton:disabled {
+  cursor: default;
+  opacity: 0.4;
 }
 
 .flatList > * + *,

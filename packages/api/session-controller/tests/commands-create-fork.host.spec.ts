@@ -151,6 +151,45 @@ describe('Session creation failures', () => {
 
 })
 
+describe('Session deletion', () => {
+  it('requires archival before permanent deletion', async () => {
+    const ctx = await baseContext()
+    const deleteSession = vi.fn(async () => {})
+    ctx.provide('workspaceRegistry', {
+      archivedSessionIds: [],
+      removeSession: vi.fn(async () => {}),
+    } as never)
+    const controller = new SessionCommandController(
+      ctx,
+      controllerAgents({ deleteSession }),
+      '/default',
+    )
+
+    await expectFailure(controller.delete({ sessionId: SessionId('active') }), 'gateway/bad-request')
+    expect(deleteSession).not.toHaveBeenCalled()
+    await ctx.fiber.dispose()
+  })
+
+  it('deletes storage before clearing every Workspace reference', async () => {
+    const ctx = await baseContext()
+    const sessionId = SessionId('archived')
+    const order: string[] = []
+    ctx.provide('workspaceRegistry', {
+      archivedSessionIds: [sessionId],
+      removeSession: vi.fn(async () => { order.push('workspace') }),
+    } as never)
+    const controller = new SessionCommandController(
+      ctx,
+      controllerAgents({ deleteSession: vi.fn(async () => { order.push('session') }) }),
+      '/default',
+    )
+
+    await expect(controller.delete({ sessionId })).resolves.toEqual({ deleted: true })
+    expect(order).toEqual(['session', 'workspace'])
+    await ctx.fiber.dispose()
+  })
+})
+
 function completedSession(
   ctx: Context,
   id: string,

@@ -297,6 +297,16 @@ export interface SessionRenameValue {
   readonly seq: number
 }
 
+/** Permanently delete one archived Session. */
+export interface SessionDeleteRequest {
+  readonly sessionId: SessionId
+}
+
+/** Receipt after the Session log and registry references are removed. */
+export interface SessionDeleteValue {
+  readonly deleted: true
+}
+
 /** Session fork request. */
 export interface SessionForkRequest {
   readonly sessionId: SessionId

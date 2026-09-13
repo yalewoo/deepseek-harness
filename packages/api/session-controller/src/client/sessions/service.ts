@@ -454,6 +454,13 @@ export class ClientSessions implements ISessions {
     return childId
   }
 
+  /** Permanently delete one archived Session. */
+  async delete(sessionId: SessionId): Promise<void> {
+    const result = await this.manager.delete(sessionId)
+    if (!result.ok) throw new Error(`session delete failed: ${result.error.code}: ${result.error.message}`)
+    this.projectList()
+  }
+
   /**
    * Resolve an Agent-scoped context view (use-and-discard).
    * @param id - session id (the agent identity — 1:1 same axis).

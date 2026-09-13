@@ -139,6 +139,41 @@ describe('ApiSession identity failures', () => {
 })
 
 describe('ApiSession Agent lookup and recovery', () => {
+  it('retains the resumed Agent handle and disposes it before deleting persistence', async () => {
+    const { ctx, agents } = await harness()
+    const meta = header('delete-live')
+    const resumed = agent(ctx, meta)
+    const order: string[] = []
+    let live = false
+    vi.spyOn(ctx.agents, 'get').mockImplementation(id => live && id === meta.id ? resumed : undefined)
+    vi.spyOn(ctx.agents, 'resume').mockImplementation(async () => {
+      live = true
+      return {
+        agent: resumed,
+        dispose: vi.fn(async () => { order.push('dispose'); live = false }),
+      }
+    })
+    providePersistence(ctx, {
+      list: () => Promise.resolve([meta]),
+      inspect: () => Promise.resolve({ meta, events: [] }),
+      delete: vi.fn(async () => { order.push('delete') }),
+    })
+    const observed = {
+      source: 'prepared',
+      header: meta,
+      events: [],
+      cursor: -1,
+      projections: { asOfSeq: -1, values: {} },
+      retain: vi.fn(),
+      [Symbol.dispose]: vi.fn(),
+    } as unknown as SessionObservation
+    await expect(agents.resolveObservedAgent(observed)).resolves.toEqual({ agent: resumed })
+
+    await expect(agents.deleteSession(meta.id)).resolves.toBeUndefined()
+
+    expect(order).toEqual(['dispose', 'delete'])
+  })
+
   it('resumes directly from a retained observation and rejects an invalid observed header', async () => {
     const { ctx, agents } = await harness()
     const meta = header('observed-resume')

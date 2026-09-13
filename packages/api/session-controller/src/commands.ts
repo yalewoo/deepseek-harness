@@ -16,6 +16,9 @@ import {
 import type { MessageSource } from '@deepseek-ai/dsh-llm'
 import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
+import {
+  SessionAlreadyOwnedError, SessionPersistenceNotFoundError,
+} from '@deepseek-ai/dsh-session-persistence'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { SessionTitleInvalidError } from '@deepseek-ai/dsh-session-title'
 import { canonicalClientTimeZone } from '@deepseek-ai/dsh-util-time'
@@ -39,6 +42,8 @@ import type {
   SessionCancelValue,
   SessionCreateRequest,
   SessionCreateValue,
+  SessionDeleteRequest,
+  SessionDeleteValue,
   SessionForkRequest,
   SessionForkValue,
   SessionPromptRequest,
@@ -78,6 +83,42 @@ export class SessionCommandController {
     private readonly agents: ApiSessionAgentController,
     private readonly defaultCwd: string,
   ) {}
+
+  /** Permanently delete one archived ordinary Session. */
+  async delete(request: SessionDeleteRequest): Promise<SessionDeleteValue> {
+    if (!this.ctx.workspaceRegistry.archivedSessionIds.includes(request.sessionId)) {
+      throw new RemoteError(
+        'gateway/bad-request',
+        `session "${request.sessionId}" must be archived before deletion`,
+        {},
+      )
+    }
+    try {
+      await this.agents.deleteSession(request.sessionId)
+      await this.ctx.workspaceRegistry.removeSession(request.sessionId)
+    } catch (error) {
+      if (remoteErrorOf(error) !== undefined) throw error
+      if (error instanceof ApiSessionSubagentOwnership) {
+        throw apiSessionSubagentOwnershipError(error.sessionId)
+      }
+      if (error instanceof ApiSessionNotFound) {
+        throw new RemoteError('session/not-found', error.message, { sessionId: request.sessionId }, { cause: error })
+      }
+      if (error instanceof SessionPersistenceNotFoundError) {
+        throw new RemoteError('session/not-found', error.message, { sessionId: request.sessionId }, { cause: error })
+      }
+      if (error instanceof SessionAlreadyOwnedError) {
+        throw new RemoteError(
+          'session/agent-busy',
+          error.message,
+          { reason: 'another process owns the Session persistence writer' },
+          { cause: error },
+        )
+      }
+      throw error
+    }
+    return { deleted: true }
+  }
 
   /**
    * Create or idempotently adopt one ordinary Session.
@@ -259,8 +300,9 @@ export class SessionCommandController {
       }
       cut = SessionLogOffset(turnStart.seq)
       if (mode === 'rerun-turn') {
-        replayMessage = source.events.find(event => event.type === 'user/message'
-          && event.seq >= turnStart.seq && event.seq <= boundary.seq)?.data
+        const replayEvent = source.events.find(event => event.type === 'user/message'
+          && event.seq >= turnStart.seq && event.seq <= boundary.seq)
+        if (replayEvent?.type === 'user/message') replayMessage = replayEvent.data
         if (replayMessage === undefined) {
           throw new RemoteError(
             'session/fork-unavailable',

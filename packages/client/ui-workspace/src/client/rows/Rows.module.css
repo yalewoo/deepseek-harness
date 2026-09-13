@@ -117,6 +117,18 @@
   margin-left: 0;
 }
 
+.archivedSessionRow .title {
+  margin-left: 8px;
+}
+
+.archiveCheckbox {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--dsw-alias-state-business-primary);
+}
+
 @keyframes row-in {
   from { opacity: 0; }
 }

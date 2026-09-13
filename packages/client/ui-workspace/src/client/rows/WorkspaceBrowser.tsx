@@ -12,8 +12,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  Button, IconCloseFill14, IconPersonalizationOutline16,
-  IconProjectAddOutline16, IconSearchOutline16, Menu, Modal, Tooltip,
+  Button, IconArchiveOutline20, IconCloseFill14, IconPersonalizationOutline16,
+  IconProjectAddOutline16, IconSearchOutline16, IconTrashOutline16, Menu, Modal, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   SessionListState, SessionSearchResultItem,
@@ -23,9 +23,9 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
 import type { SessionNode, SessionOrderBy } from '../tree.ts'
 import {
-  deriveFlat, deriveGroups, deriveSearchResults, owningGroupKey, UNGROUPED_KEY,
+  deriveArchived, deriveFlat, deriveGroups, deriveSearchResults, owningGroupKey, UNGROUPED_KEY,
 } from '../tree.ts'
-import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
+import { ArchivedSessionItem, ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
 import { FLAT_SESSION_ORDER_KEY } from '../stores.ts'
 import { WorkspacePickFlow } from '../WorkspacePicker.tsx'
 import css from './WorkspaceBrowser.module.css'
@@ -831,6 +831,82 @@ function SearchResults({
   )
 }
 
+/** Archived Session management list with local multi-selection. */
+function ArchivedList({
+  useSessions, useSessionPendingInteraction, open, archivedSessionIds,
+  onRestore, onDeleteRequest, usePanelInfo, t,
+}: Pick<SessionTreeProps, 'useSessions' | 'useSessionPendingInteraction' | 'open' | 't' | 'usePanelInfo'> & {
+  archivedSessionIds: readonly SessionId[]
+  onRestore: (sessionId: SessionId) => void
+  onDeleteRequest: (sessionIds: readonly SessionId[]) => void
+}) {
+  const panelActive = usePanelInfo(info => info.activePanelId !== null)
+  const list = useSessions(state => state)
+  const pendingInteractions = useSessionPendingInteraction(state => state)
+  const rows = useMemo(
+    () => deriveArchived(list, archivedSessionIds, pendingInteractions),
+    [list, archivedSessionIds, pendingInteractions],
+  )
+  const [selectedIds, setSelectedIds] = useState<readonly SessionId[]>([])
+  useEffect(() => {
+    const available = new Set(rows.map(row => row.id))
+    setSelectedIds(current => current.filter(id => available.has(id)))
+  }, [rows])
+  const selected = new Set(selectedIds)
+  const allSelected = rows.length > 0 && selectedIds.length === rows.length
+  const now = Date.now()
+  return (
+    <div className={clsx(css.treeBody, css.wide)}>
+      {rows.length > 0 && (
+        <div className={css.archiveToolbar}>
+          <label className={css.archiveSelectAll}>
+            <input
+              type="checkbox"
+              checked={allSelected}
+              aria-label={t('archive.selectAll')}
+              onChange={(event) => {
+                setSelectedIds(event.target.checked ? rows.map(row => row.id) : [])
+              }}
+            />
+            <span>{t('archive.selected', { n: selectedIds.length })}</span>
+          </label>
+          <button
+            type="button"
+            className={css.archiveDeleteButton}
+            disabled={selectedIds.length === 0}
+            onClick={() => { onDeleteRequest(selectedIds) }}
+          >
+            <IconTrashOutline16 />
+            <span>{t('archive.deleteSelected')}</span>
+          </button>
+        </div>
+      )}
+      <div className={clsx(css.list, css.flatList)} role="tree" aria-label={t('section.archived')}>
+        {rows.length === 0 && <div className={css.empty}>{t('archive.empty')}</div>}
+        {rows.map(node => (
+          <ArchivedSessionItem
+            key={node.id}
+            node={node}
+            currentId={panelActive ? undefined : list.current}
+            now={now}
+            checked={selected.has(node.id)}
+            onCheckedChange={(checked) => {
+              setSelectedIds(current => checked
+                ? [...current, node.id]
+                : current.filter(id => id !== node.id))
+            }}
+            onOpen={open}
+            onRestore={onRestore}
+            onDelete={(id) => { onDeleteRequest([id]) }}
+            t={t}
+          />
+        ))}
+      </div>
+      <span className={css.fade} />
+    </div>
+  )
+}
+
 /**
  * Render the browsing region.
  * @param props - composed slot props (shell owner share + store + injected actions).
@@ -853,6 +929,8 @@ export function WorkspaceBrowser({
   deleteWorkspace,
   insertWorkspaceBefore,
   archiveSession,
+  unarchiveSession,
+  deleteSession,
   insertSessionBefore,
   createWorkspace,
   searchSessions,
@@ -867,6 +945,7 @@ export function WorkspaceBrowser({
   const workspacePhase = useWorkspaces(state => state.phase)
   const workspaceStreamState = useWorkspaces(state => state.state)
   const archivedSessionIds = useWorkspaces(state => state.archivedSessionIds)
+  const [archiveView, setArchiveView] = useState(false)
   // Live occupancy of this surface's directory-flow hole (the same source the
   // flow reads): a composition without a picking affordance can add nothing.
   const directoryFlowAvailable = useDirectoryFlow(occupied => occupied)
@@ -1085,6 +1164,41 @@ export function WorkspaceBrowser({
     })
   }
 
+  const onSessionRestore = (sessionId: SessionId) => {
+    unarchiveSession(sessionId).catch((reason: unknown) => {
+      console.warn('session restore rejected:', reason)
+    })
+  }
+
+  const [sessionDeleteTargets, setSessionDeleteTargets] = useState<readonly SessionId[]>([])
+  const [sessionDeleting, setSessionDeleting] = useState(false)
+  const [sessionDeleteError, setSessionDeleteError] = useState<string | null>(null)
+  const requestSessionDelete = (sessionIds: readonly SessionId[]) => {
+    if (sessionIds.length === 0) return
+    setSessionDeleteTargets(sessionIds)
+    setSessionDeleteError(null)
+  }
+  const closeSessionDelete = () => {
+    if (sessionDeleting) return
+    setSessionDeleteTargets([])
+    setSessionDeleteError(null)
+  }
+  const confirmSessionDelete = () => {
+    if (sessionDeleting || sessionDeleteTargets.length === 0) return
+    setSessionDeleting(true)
+    setSessionDeleteError(null)
+    void Promise.allSettled(sessionDeleteTargets.map(id => deleteSession(id))).then((results) => {
+      const failed = sessionDeleteTargets.filter((_id, index) => results[index]?.status === 'rejected')
+      setSessionDeleting(false)
+      setSessionDeleteTargets(failed)
+      if (failed.length === 0) setSessionDeleteError(null)
+      else setSessionDeleteError(t('archive.deleteFailed', { n: failed.length }))
+    })
+  }
+  const singleDeleteTitle = sessionDeleteTargets.length === 1
+    ? useSessions(state => state.byId[sessionDeleteTargets[0] as SessionId]?.displayTitle)
+    : undefined
+
   // Delete dialog is separate from the row so a successful removal can
   // unmount that row without tearing down the in-flight confirmation state.
   const [deleteTarget, setDeleteTarget] = useState<{ workspaceId: WorkspaceId; title: string } | null>(null)
@@ -1125,10 +1239,12 @@ export function WorkspaceBrowser({
       <div className={css.sectionHeader}>
         {wide && (
           <span className={clsx(css.sectionLabel, css.wide, searchExpanded && css.sectionLabelHidden)}>
-            {groupBy === 'flat' ? t('section.sessions') : t('section.workspaces')}
+            {archiveView
+              ? t('section.archived')
+              : groupBy === 'flat' ? t('section.sessions') : t('section.workspaces')}
           </span>
         )}
-        {wide && (
+        {wide && !archiveView && (
           <div className={clsx(css.searchSlot, searchExpanded && css.searchSlotExpanded)}>
             <div
               ref={searchRoot}
@@ -1187,6 +1303,23 @@ export function WorkspaceBrowser({
         )}
         <div className={clsx(css.headerActions, wide && searchExpanded && css.headerActionsHidden)}>
           {wide && (
+            <Tooltip label={archiveView ? t('archive.back') : t('archive.show')} side="bottom" delayMs={500}>
+              <button
+                type="button"
+                className={clsx(css.iconButton, archiveView && css.iconButtonActive)}
+                aria-label={archiveView ? t('archive.back') : t('archive.show')}
+                aria-pressed={archiveView}
+                onClick={() => {
+                  setArchiveView(value => !value)
+                  setQuery('')
+                  setSearchExpanded(false)
+                }}
+              >
+                <IconArchiveOutline20 size={16} />
+              </button>
+            </Tooltip>
+          )}
+          {wide && !archiveView && (
             <ViewOptionsMenu
               groupBy={groupBy}
               orderBy={orderBy}
@@ -1254,76 +1387,89 @@ export function WorkspaceBrowser({
       {/* Always-mounted seat keeps the region's flex slot while the list
           itself is wide-only. */}
       <div className={css.listArea}>
-        {wide && (normalizedQuery !== ''
+        {wide && (archiveView
           ? (
-            <SearchResults
+            <ArchivedList
               usePanelInfo={usePanelInfo}
               useSessions={useSessions}
               useSessionPendingInteraction={useSessionPendingInteraction}
-              open={openSearchResult}
-              workspaces={workspaces}
+              open={open}
               archivedSessionIds={archivedSessionIds}
-              query={normalizedQuery}
-              remote={remoteSearch}
-              resultLimit={searchResultLimit}
+              onRestore={onSessionRestore}
+              onDeleteRequest={requestSessionDelete}
               t={t}
             />
           )
-          : groupBy === 'flat'
+          : normalizedQuery !== ''
             ? (
-              <FlatList
-                usePanelInfo={usePanelInfo}
-                useSessions={useSessions} useSessionPendingInteraction={useSessionPendingInteraction}
-                open={open} forkSession={forkSession}
-                onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
-                archivedSessionIds={archivedSessionIds}
-                orderBy={orderBy}
-                sessionOrderByAccount={sessionOrderByAccount}
-                sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
-                syncSessionOrderAccount={actions.syncSessionOrderAccount}
-                setSessionOrder={actions.setSessionOrder}
-                revealSessionId={revealSessionId}
-                onSessionRevealed={acknowledgeSessionReveal}
-                t={t}
-              />
-            )
-            : (
-              <SessionTree
+              <SearchResults
                 usePanelInfo={usePanelInfo}
                 useSessions={useSessions}
                 useSessionPendingInteraction={useSessionPendingInteraction}
-                onSessionRename={onSessionRename}
-                onSessionArchive={onSessionArchive}
-                forkSession={forkSession}
+                open={openSearchResult}
                 workspaces={workspaces}
-                workspaceReady={workspacePhase === 'ready' && workspaceStreamState !== 'loading'}
-                groupExpansion={groupExpansion}
-                setGroupExpanded={actions.setGroupExpanded}
-                sessionOrderByAccount={sessionOrderByAccount}
-                sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
-                syncSessionOrderAccount={actions.syncSessionOrderAccount}
-                setSessionOrder={actions.setSessionOrder}
                 archivedSessionIds={archivedSessionIds}
-                startSession={startSession}
-                open={open}
-                insertWorkspaceBefore={insertWorkspaceBefore}
-                insertSessionBefore={insertSessionBefore}
-                orderBy={orderBy}
-                revealSessionId={revealSessionId}
-                onSessionRevealed={acknowledgeSessionReveal}
-                home={home}
+                query={normalizedQuery}
+                remote={remoteSearch}
+                resultLimit={searchResultLimit}
                 t={t}
-                onRenameRequest={(workspaceId, currentTitle) => {
-                  setRenameTarget({ workspaceId, currentTitle })
-                  setRenameDraft(currentTitle)
-                  setRenameError(null)
-                }}
-                onDeleteRequest={(workspaceId, title) => {
-                  setDeleteTarget({ workspaceId, title })
-                  setDeleteError(null)
-                }}
               />
-            ))}
+            )
+            : groupBy === 'flat'
+              ? (
+                <FlatList
+                  usePanelInfo={usePanelInfo}
+                  useSessions={useSessions} useSessionPendingInteraction={useSessionPendingInteraction}
+                  open={open} forkSession={forkSession}
+                  onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
+                  archivedSessionIds={archivedSessionIds}
+                  orderBy={orderBy}
+                  sessionOrderByAccount={sessionOrderByAccount}
+                  sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
+                  syncSessionOrderAccount={actions.syncSessionOrderAccount}
+                  setSessionOrder={actions.setSessionOrder}
+                  revealSessionId={revealSessionId}
+                  onSessionRevealed={acknowledgeSessionReveal}
+                  t={t}
+                />
+              )
+              : (
+                <SessionTree
+                  usePanelInfo={usePanelInfo}
+                  useSessions={useSessions}
+                  useSessionPendingInteraction={useSessionPendingInteraction}
+                  onSessionRename={onSessionRename}
+                  onSessionArchive={onSessionArchive}
+                  forkSession={forkSession}
+                  workspaces={workspaces}
+                  workspaceReady={workspacePhase === 'ready' && workspaceStreamState !== 'loading'}
+                  groupExpansion={groupExpansion}
+                  setGroupExpanded={actions.setGroupExpanded}
+                  sessionOrderByAccount={sessionOrderByAccount}
+                  sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
+                  syncSessionOrderAccount={actions.syncSessionOrderAccount}
+                  setSessionOrder={actions.setSessionOrder}
+                  archivedSessionIds={archivedSessionIds}
+                  startSession={startSession}
+                  open={open}
+                  insertWorkspaceBefore={insertWorkspaceBefore}
+                  insertSessionBefore={insertSessionBefore}
+                  orderBy={orderBy}
+                  revealSessionId={revealSessionId}
+                  onSessionRevealed={acknowledgeSessionReveal}
+                  home={home}
+                  t={t}
+                  onRenameRequest={(workspaceId, currentTitle) => {
+                    setRenameTarget({ workspaceId, currentTitle })
+                    setRenameDraft(currentTitle)
+                    setRenameError(null)
+                  }}
+                  onDeleteRequest={(workspaceId, title) => {
+                    setDeleteTarget({ workspaceId, title })
+                    setDeleteError(null)
+                  }}
+                />
+              ))}
       </div>
 
       <Modal
@@ -1359,6 +1505,31 @@ export function WorkspaceBrowser({
           <div className={css.renameError} role="alert">{t('conflict.named', { name: renameTrimmed })}</div>
         )}
         {renameError !== null && <div className={css.renameError} role="alert">{renameError}</div>}
+      </Modal>
+      <Modal
+        open={sessionDeleteTargets.length > 0}
+        onClose={closeSessionDelete}
+        closeLabel={t('close')}
+        title={t('archive.deleteTitle')}
+        description={sessionDeleteTargets.length === 1
+          ? t('archive.deleteOneDesc', { name: singleDeleteTitle ?? String(sessionDeleteTargets[0]) })
+          : t('archive.deleteManyDesc', { n: sessionDeleteTargets.length })}
+        footer={(
+          <>
+            <Button variant="outline" disabled={sessionDeleting} onClick={closeSessionDelete}>{t('cancel')}</Button>
+            <Button
+              variant="outline"
+              className={css.deleteAction}
+              disabled={sessionDeleting}
+              onClick={confirmSessionDelete}
+            >
+              {t('archive.delete')}
+            </Button>
+          </>
+        )}
+      >
+        {sessionDeleting && <div className={css.deleteStatus} role="status">{t('archive.deleting')}</div>}
+        {sessionDeleteError !== null && <div className={css.renameError} role="alert">{sessionDeleteError}</div>}
       </Modal>
 
       <Modal

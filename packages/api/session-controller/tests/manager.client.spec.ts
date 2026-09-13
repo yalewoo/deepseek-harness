@@ -681,6 +681,18 @@ describe('remaining branches', () => {
     })])
   })
 
+  it('removes a Session immediately after permanent deletion succeeds', async () => {
+    const api = new FakeApiClient()
+    api.onList = () => Promise.resolve(ok({ items: [summary(S1)] as never[] }))
+    const manager = new SessionManager(fakeRemote(api))
+    await manager.refreshList()
+
+    await expect(manager.delete(S1)).resolves.toMatchObject({ ok: true })
+
+    expect(api.callsOf('session.delete')).toEqual([{ sessionId: S1 }])
+    expect(manager.getListSnapshot().items).toEqual([])
+  })
+
   it('reconciles a preallocated id after an ordinary transport failure', async () => {
     const api = new FakeApiClient()
     api.onCreate = () => Promise.reject(new Error('response lost'))

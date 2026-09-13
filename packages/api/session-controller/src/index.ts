@@ -33,6 +33,8 @@ import type {
   SessionControlFrame,
   SessionCreateRequest,
   SessionCreateValue,
+  SessionDeleteRequest,
+  SessionDeleteValue,
   SessionFollowFrame,
   SessionFollowRequest,
   SessionForkRequest,
@@ -94,6 +96,7 @@ export class SessionController extends TypertRemoteService {
     'sessions',
     'sessionProjections',
     'sessionQuery',
+    'sessionPersistence',
     'typert',
     'workspaceRegistry',
   ]
@@ -325,6 +328,12 @@ export class SessionController extends TypertRemoteService {
   @Remote('rename')
   rename(request: SessionRenameRequest): Promise<SessionRenameValue> {
     return this.commands.rename(request)
+  }
+
+  /** Permanently delete one archived Session. */
+  @Remote('delete')
+  delete(request: SessionDeleteRequest): Promise<SessionDeleteValue> {
+    return this.commands.delete(request)
   }
 
   /**

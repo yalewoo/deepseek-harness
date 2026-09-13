@@ -4,7 +4,7 @@ import { mkdir } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type {
-  Agent, AgentOptions, AgentSetup, ModelSelection as AgentModelSelection, ModelSelectionRef,
+  Agent, AgentHandle, AgentOptions, AgentSetup, ModelSelection as AgentModelSelection, ModelSelectionRef,
 } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-agent-presets'
@@ -140,11 +140,14 @@ export async function inspectApiSession(
 export class ApiSessionAgentController {
   private readonly resumes = new Map<SessionId, Promise<Agent>>()
   private readonly creations = new Map<SessionId, Promise<Agent>>()
+  private readonly handles = new Map<SessionId, AgentHandle>()
+  private readonly deletions = new Map<SessionId, Promise<void>>()
   private readonly selections = new WeakMap<Agent, InstalledSelection>()
   private readonly imageAdmissionChains = new WeakMap<Agent, Promise<void>>()
 
   /** @param ctx - Host context carrying Agent, model, persistence, and Typert services. */
   constructor(private readonly ctx: Context) {
+    ctx.on('session/disposed', (session) => { this.handles.delete(session.id) })
     ctx.typert.lookups.configure('agent', async (sessionId: SessionId) => {
       const found = await this.resolveAgent(sessionId)
       if ('error' in found) throw found.error
@@ -184,6 +187,15 @@ export class ApiSessionAgentController {
     sessionId: SessionId,
     observation?: SessionObservation,
   ): Promise<ApiSessionAgentResult> {
+    if (this.deletions.has(sessionId)) {
+      return {
+        error: new RemoteError(
+          'session/agent-busy',
+          `session "${sessionId}" is being deleted`,
+          { reason: 'permanent deletion is in progress' },
+        ),
+      }
+    }
     const live = this.liveAgent(sessionId)
     if (live !== undefined) return live
     const attached = this.ctx.sessions.get(sessionId)
@@ -235,6 +247,7 @@ export class ApiSessionAgentController {
     checkPersistedIdentity: boolean,
     presetId?: string,
   ): Promise<Agent> {
+    if (this.deletions.has(sessionId)) throw new Error(`session "${sessionId}" is being deleted`)
     let creation = this.creations.get(sessionId)
     if (creation === undefined) {
       creation = this.createOrAdopt(sessionId, cwd, checkPersistedIdentity, presetId)
@@ -366,6 +379,42 @@ export class ApiSessionAgentController {
     return result
   }
 
+  /** Stop this controller's live Agent, then permanently remove its stored Session. */
+  deleteSession(sessionId: SessionId): Promise<void> {
+    const active = this.deletions.get(sessionId)
+    if (active !== undefined) return active
+    const deletion = this.deleteOwnedSession(sessionId)
+      .finally(() => { this.deletions.delete(sessionId) })
+    this.deletions.set(sessionId, deletion)
+    return deletion
+  }
+
+  private async deleteOwnedSession(sessionId: SessionId): Promise<void> {
+    await Promise.allSettled([
+      this.resumes.get(sessionId) ?? Promise.resolve(),
+      this.creations.get(sessionId) ?? Promise.resolve(),
+    ])
+    const live = this.ctx.agents.get(sessionId)
+    let emittedRemoval = false
+    if (live !== undefined) {
+      if (hasApiSessionSubagentOwner(this.ctx, live.session, live)) {
+        throw new ApiSessionSubagentOwnership(sessionId)
+      }
+      const handle = this.handles.get(sessionId)
+      if (handle === undefined || handle.agent !== live) {
+        throw new RemoteError(
+          'session/agent-busy',
+          `session "${sessionId}" is owned by another lifecycle`,
+          { reason: 'the live Agent is not owned by the Session Controller' },
+        )
+      }
+      await handle.dispose()
+      emittedRemoval = true
+    }
+    await this.ctx.sessionPersistence.delete(sessionId)
+    if (!emittedRemoval) this.ctx.emit('api-session/removed', sessionId)
+  }
+
   /**
    * Resolve the preset id and pre-publication Agent setup for a create or resume.
    * @param presetId - requested preset or the configured default when omitted.
@@ -427,11 +476,11 @@ export class ApiSessionAgentController {
     if (published !== undefined && hasApiSessionSubagentOwner(this.ctx, published, live)) {
       throw new ApiSessionSubagentOwnership(sessionId)
     }
-    return (await this.ctx.agents.resume({
+    return this.retain(await this.ctx.agents.resume({
       resumeSessionId: sessionId,
       agentOptions: this.agentOptions(),
       setup: composition.setup,
-    })).agent
+    }))
   }
 
   private async createOrAdopt(
@@ -459,11 +508,11 @@ export class ApiSessionAgentController {
         const storedPreset = this.presetForObservation(observation)
         this.assertPresetUnchanged(sessionId, presetId, storedPreset)
         const composition = await this.composeAgent(storedPreset)
-        return (await this.ctx.agents.resume({
+        return this.retain(await this.ctx.agents.resume({
           resumeSessionId: sessionId,
           agentOptions: this.agentOptions(),
           setup: composition.setup,
-        })).agent
+        }))
       } catch (error: unknown) {
         if (!(error instanceof SessionQueryError)
           || error.code !== 'SESSION_QUERY_SESSION_NOT_FOUND') throw error
@@ -476,7 +525,7 @@ export class ApiSessionAgentController {
       throw new Error(`failed to ensure project directory "${cwd}": ${String(error)}`, { cause: error })
     }
     const composition = await this.composeAgent(presetId)
-    return (await this.ctx.agents.create({
+    return this.retain(await this.ctx.agents.create({
       sessionId,
       agentOptions: this.agentOptions(),
       meta: {
@@ -484,7 +533,12 @@ export class ApiSessionAgentController {
         ...(composition.agentPreset === undefined ? {} : { agentPreset: composition.agentPreset }),
       },
       setup: composition.setup,
-    })).agent
+    }))
+  }
+
+  private retain(handle: AgentHandle): Agent {
+    this.handles.set(handle.agent.id, handle)
+    return handle.agent
   }
 
   private agentOptions(): AgentOptions {

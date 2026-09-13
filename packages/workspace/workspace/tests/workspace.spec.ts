@@ -904,6 +904,23 @@ describe('workspace mutation and status', () => {
 })
 
 describe('registry-global session archive', () => {
+  it('restores archived sessions and removes every reference after permanent deletion', async () => {
+    const dir = await makeDir('archive-management')
+    const result = await harness({ sessions: [header('managed', dir, 100)] })
+    const workspace = result.registry.list()[0]!
+    await result.registry.archiveSession(SessionId('managed'))
+
+    await result.registry.unarchiveSession(SessionId('managed'))
+    expect(result.registry.archivedSessionIds).toEqual([])
+    expect(workspace.sessionIds).toEqual(['managed'])
+
+    await result.registry.archiveSession(SessionId('managed'))
+    await result.registry.removeSession(SessionId('managed'))
+    expect(result.registry.archivedSessionIds).toEqual([])
+    expect(workspace.sessionIds).toEqual([])
+    expect(storedState(result.pool).archivedSessionIds).toEqual([])
+  })
+
   it('archives durably in order, idempotently skips repeats, and leaves accounting untouched', async () => {
     const dir = await makeDir('archive-home')
     const result = await harness({ sessions: [header('kept', dir, 100), header('gone', dir, 200)] })
