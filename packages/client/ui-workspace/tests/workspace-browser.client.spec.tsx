@@ -155,6 +155,25 @@ describe('WorkspaceBrowser', () => {
     })
   })
 
+  it('keeps a failed single deletion open with its runtime reason', async () => {
+    const deleteSession = vi.fn(async () => { throw new Error('session is busy') })
+    mount({
+      useSessions: hook(sessionState([summary('archived-one', 20)])),
+      useWorkspaces: hook(workspaceState([], [sid('archived-one')])),
+      deleteSession,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '查看已归档会话' }))
+    fireEvent.click(screen.getByRole('button', { name: '会话“archived-one”的操作' }))
+    fireEvent.click(await screen.findByText('永久删除'))
+    expect(screen.getByText('将永久删除“archived-one”及其全部对话记录。此操作无法撤销。')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '永久删除' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('session is busy')
+    expect(deleteSession).toHaveBeenCalledWith(sid('archived-one'))
+  })
+
   it('selects and archives every normal conversation, including folded rows', async () => {
     const archiveSession = vi.fn(async () => {})
     const items = Array.from({ length: 7 }, (_, index) => summary(`session-${index + 1}`, 7 - index))

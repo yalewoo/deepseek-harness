@@ -1256,12 +1256,21 @@ export function WorkspaceBrowser({
       setSessionDeleting(false)
       setSessionDeleteTargets(failed)
       if (failed.length === 0) setSessionDeleteError(null)
-      else setSessionDeleteError(t('archive.deleteFailed', { n: failed.length }))
+      else {
+        const firstFailure = results.find(result => result.status === 'rejected')
+        const detail = firstFailure?.status === 'rejected'
+          ? firstFailure.reason instanceof Error
+            ? firstFailure.reason.message
+            : typeof firstFailure.reason === 'string' ? firstFailure.reason : ''
+          : ''
+        const summary = t('archive.deleteFailed', { n: failed.length })
+        setSessionDeleteError(detail === '' ? summary : `${summary} ${detail}`)
+      }
     })
   }
-  const singleDeleteTitle = sessionDeleteTargets.length === 1
-    ? useSessions(state => state.byId[sessionDeleteTargets[0] as SessionId]?.displayTitle)
-    : undefined
+  const singleDeleteTitle = useSessions(state => sessionDeleteTargets.length === 1
+    ? state.byId[sessionDeleteTargets[0] as SessionId]?.displayTitle
+    : undefined)
 
   // Delete dialog is separate from the row so a successful removal can
   // unmount that row without tearing down the in-flight confirmation state.
