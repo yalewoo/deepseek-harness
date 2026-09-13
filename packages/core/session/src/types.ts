@@ -435,11 +435,17 @@ export type SurfaceOp =
   | 'append'
   | { op: 'replace'; startSeq: SessionSeq; endSeq: SessionSeq }
 
+/** Optional envelope metadata shared by appendable Session events. */
+export interface EventIntent {
+  /** Permit readers that do not recognize this event type to skip it safely. */
+  readonly ignorable?: true
+}
+
 /**
  * Surface placement and cited source-event seqs for {@link Session.append}. Required on
  * message-producing events and forbidden on log-only events.
  */
-export type SurfaceIntent<T extends SurfaceEventType = SurfaceEventType> = {
+export type SurfaceIntent<T extends SurfaceEventType = SurfaceEventType> = EventIntent & {
   surfaceOp: SurfaceOp
 } & (T extends 'assistant/message' ? {
   /** Assistant messages embed their provider stream instead of citing source events. */

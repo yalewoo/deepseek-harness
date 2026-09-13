@@ -1232,6 +1232,15 @@ describe('Session', () => {
     ])
     expect(marked.snapshotEvents()[0]?.ignorable).toBe(true)
   })
+
+  it('appends ignorable log-only events without adding surface messages', () => {
+    const session = Session.create(SessionId('ignorable-append'))
+    const event = session.append('turn/start', { turn: 1 }, { ignorable: true })
+
+    expect(event.ignorable).toBe(true)
+    expect(session.surface.nodes).toEqual([])
+    expect(session.deriveMessages()).toEqual([])
+  })
 })
 
 
