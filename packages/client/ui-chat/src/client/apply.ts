@@ -169,15 +169,21 @@ export function apply(ctx: Context): void {
               })
           },
           regenerateAt: (seq, turn) => {
-            ctx.sessions.forkMessageVersion({
-              sessionId, atSeq: seq, turn, role: 'assistant', action: 'regenerate',
-            })
+            const operation = ctx.sessions.forkMessageVersion === undefined
+              ? ctx.sessions.fork({ sessionId, atSeq: seq, increaseTitle: true, mode: 'rerun-turn' })
+              : ctx.sessions.forkMessageVersion({
+                sessionId, atSeq: seq, turn: turn ?? 0, role: 'assistant', action: 'regenerate',
+              })
+            operation
               .then((childId) => { ctx.sessions.open(childId) })
               .catch(() => {
                 // Derivation failure leaves the source view unchanged.
               })
           },
           editAt: async (seq, turn, role, text) => {
+            if (ctx.sessions.forkMessageVersion === undefined) {
+              throw new Error('message editing is unavailable')
+            }
             const childId = await ctx.sessions.forkMessageVersion({
               sessionId,
               atSeq: seq,
@@ -188,6 +194,7 @@ export function apply(ctx: Context): void {
             })
             ctx.sessions.open(childId)
           },
+          messageVersionsAt: (turn, role) => ctx.sessions.messageVersions?.(sessionId, turn, role),
           switchMessageVersion: (childId) => { ctx.sessions.open(childId) },
           deleteAt: (seq) => {
             ctx.sessions.fork({ sessionId, atSeq: seq, increaseTitle: true, mode: 'before-turn' })

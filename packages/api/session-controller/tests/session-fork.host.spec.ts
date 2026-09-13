@@ -200,7 +200,7 @@ describe('sessions.fork', () => {
     const ctx = await composed([], followup as Agent['followup'])
     const source = ctx.sessions.create(sid('session-source'), { meta: { cwd: '/proj' } })
     const image = { type: 'image', attachment: {
-      id: 'attachment-1', mediaType: 'image/png', bytes: 10, width: 1, height: 1,
+      attachmentId: 'attachment-1' as never, mediaType: 'image/png', bytes: 10, width: 1, height: 1,
     } } as const
     source.append('turn/start', { turn: 1 })
     const original = source.append('user/message', createUserMessage({

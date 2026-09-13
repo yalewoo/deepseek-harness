@@ -30,7 +30,7 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
   // Interruption-frozen partials carry no messageId, so they address no
   // durable message and contribute no per-message actions.
   const messageId = closing.finalNode.messageId
-  const versions = messageVersionsAt(data.turn, 'assistant')
+  const versions = messageVersionsAt?.(data.turn, 'assistant')
   const assistantActions = messageId === undefined
     ? null
     : renderSlot('conversation.chat.assistant-actions', { messageId })
@@ -46,10 +46,10 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
         time={closing.time}
         clock="end"
         onRegenerate={() => { regenerateAt(closing.finalNode.seq, data.turn) }}
-        onEdit={messageId === undefined
+        onEdit={messageId === undefined || editAt === undefined
           ? undefined
           : text => editAt(closing.finalNode.seq, data.turn, 'assistant', text)}
-        versions={versions === undefined ? undefined : {
+        versions={versions === undefined || switchMessageVersion === undefined ? undefined : {
           ...versions,
           onSwitch: switchMessageVersion,
         }}

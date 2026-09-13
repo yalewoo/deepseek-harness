@@ -320,7 +320,7 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
   const turn = node.location.kind === 'turn' || node.location.kind === 'step'
     ? node.location.turn.turn
     : undefined
-  const versions = node.kind === 'user' && turn !== undefined
+  const versions = node.kind === 'user' && turn !== undefined && messageVersionsAt !== undefined
     ? messageVersionsAt(turn, 'user')
     : undefined
   return (
@@ -337,10 +337,10 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
           time={data.time}
           clock="start"
           onBranch={node.kind === 'user' ? () => { branchAt(data.seq, 'user') } : undefined}
-          onEdit={node.kind === 'user' && turn !== undefined
+          onEdit={node.kind === 'user' && turn !== undefined && editAt !== undefined
             ? text => editAt(data.seq, turn, 'user', text)
             : undefined}
-          versions={versions === undefined ? undefined : {
+          versions={versions === undefined || switchMessageVersion === undefined ? undefined : {
             ...versions,
             onSwitch: switchMessageVersion,
           }}

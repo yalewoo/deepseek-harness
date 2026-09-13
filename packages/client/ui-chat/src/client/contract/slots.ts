@@ -85,10 +85,10 @@ export interface ChatNodeOwnerProps {
   openFile: (path: string, options?: OpenFileOptions) => void
   inspectCall: (callId: ToolCallId) => void
   branchAt: (seq: number, role: 'user' | 'assistant') => void
-  regenerateAt: (seq: number, turn: number) => void
-  editAt: (seq: number, turn: number, role: 'user' | 'assistant', text: string) => Promise<void>
-  messageVersionsAt: (turn: number, role: 'user' | 'assistant') => MessageVersionSet | undefined
-  switchMessageVersion: (sessionId: SessionId) => void
+  regenerateAt: (seq: number, turn?: number) => void
+  editAt?: (seq: number, turn: number, role: 'user' | 'assistant', text: string) => Promise<void>
+  messageVersionsAt?: (turn: number, role: 'user' | 'assistant') => MessageVersionSet | undefined
+  switchMessageVersion?: (sessionId: SessionId) => void
   deleteAt: (seq: number) => void
   /**
    * Session-authorized image loader, down-threaded from the Chat view so a
@@ -158,9 +158,10 @@ export interface ChatViewInjected {
     read: () => ChatScrollPosition | null
   }
   branchAt: (seq: number, role: 'user' | 'assistant') => void
-  regenerateAt: (seq: number, turn: number) => void
-  editAt: (seq: number, turn: number, role: 'user' | 'assistant', text: string) => Promise<void>
-  switchMessageVersion: (sessionId: SessionId) => void
+  regenerateAt: (seq: number, turn?: number) => void
+  editAt?: (seq: number, turn: number, role: 'user' | 'assistant', text: string) => Promise<void>
+  messageVersionsAt?: (turn: number, role: 'user' | 'assistant') => MessageVersionSet | undefined
+  switchMessageVersion?: (sessionId: SessionId) => void
   deleteAt: (seq: number) => void
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
 }

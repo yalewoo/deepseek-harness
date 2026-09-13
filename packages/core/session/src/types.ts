@@ -445,20 +445,14 @@ export interface EventIntent {
  * Surface placement and cited source-event seqs for {@link Session.append}. Required on
  * message-producing events and forbidden on log-only events.
  */
-export type SurfaceIntent<T extends SurfaceEventType = SurfaceEventType> = EventIntent & (
-  T extends 'assistant/message' ? ({
-    /** Model-produced assistant appends embed their provider stream. */
-    surfaceOp: 'append'
-    sourceEventSeqs?: never
-  } | {
-    /** Manually authored assistant replacements cite every message they shadow. */
-    surfaceOp: Extract<SurfaceOp, { op: 'replace' }>
-    sourceEventSeqs: SessionSeq[]
-  }) : {
-    surfaceOp: SurfaceOp
-    /** Complete non-empty set of known earlier source-event seqs. */
-    sourceEventSeqs?: SessionSeq[]
-  })
+export type SurfaceIntent<T extends SurfaceEventType = SurfaceEventType> = EventIntent & {
+  surfaceOp: SurfaceOp
+  /**
+   * Complete non-empty set of known earlier source-event seqs. Assistant
+   * appends reject this at runtime; assistant replacements require it.
+   */
+  sourceEventSeqs?: T extends SurfaceEventType ? SessionSeq[] : never
+}
 
 /**
  * One immutable entry in the session log.

@@ -524,6 +524,11 @@ export class ClientSessions implements ISessions {
     return result.value.sessionId
   }
 
+  /** Resolve inline versions for one message location from the current list projection. */
+  messageVersions(sessionId: SessionId, turn: number, role: 'user' | 'assistant'): MessageVersionSet | undefined {
+    return messageVersionsFor(this.list.getSnapshot(), sessionId, turn, role)
+  }
+
   /** Permanently delete one archived Session. */
   async delete(sessionId: SessionId): Promise<void> {
     const result = await this.manager.delete(sessionId)

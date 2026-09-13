@@ -11,7 +11,7 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { AgentContext } from '../scope.ts'
 import type { SessionSearchResultItem } from '../sessions/manager.ts'
-import type { SessionBinding, SessionListState } from '../sessions/service.ts'
+import type { MessageVersionSet, SessionBinding, SessionListState } from '../sessions/service.ts'
 import type { SessionFace } from './session.ts'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 
@@ -101,7 +101,7 @@ export interface ISessions {
     mode?: 'through-turn' | 'before-turn' | 'rerun-turn'
   }): Promise<SessionId>
   /** Create a Session-backed inline version of one durable user or assistant message. */
-  forkMessageVersion(opts: {
+  forkMessageVersion?(opts: {
     sessionId: SessionId
     atSeq: number
     turn: number
@@ -109,6 +109,8 @@ export interface ISessions {
     action: 'regenerate' | 'user-edit' | 'assistant-edit'
     text?: string
   }): Promise<SessionId>
+  /** Resolve inline versions for one message location from the current list projection. */
+  messageVersions?(sessionId: SessionId, turn: number, role: 'user' | 'assistant'): MessageVersionSet | undefined
   /** Permanently delete one archived Session. */
   delete(sessionId: SessionId): Promise<void>
   /**

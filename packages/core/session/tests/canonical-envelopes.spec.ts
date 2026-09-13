@@ -319,10 +319,10 @@ describe('canonical event-local surface metadata', () => {
     expect(snapshotSessionEvent(event)).toEqual(event)
   })
 
-  it('requires surface intent and permits assistant provenance only for replacements', () => {
+  it('requires surface intent and exposes assistant replacement provenance', () => {
     expectTypeOf<SurfaceEvent>().toEqualTypeOf<SessionEvent<SurfaceEventType>>()
     expectTypeOf<Omit<SessionEvent<'user/message'>, 'surfaceOp'>>().not.toExtend<SessionEvent<'user/message'>>()
-    expectTypeOf<{ surfaceOp: 'append'; sourceEventSeqs: SessionSeq[] }>().not.toExtend<SurfaceIntent<'assistant/message'>>()
+    expectTypeOf<{ surfaceOp: 'append'; sourceEventSeqs: SessionSeq[] }>().toExtend<SurfaceIntent<'assistant/message'>>()
     expectTypeOf<{ op: 'replace'; start: SessionSeq; end: SessionSeq }>().not.toExtend<SurfaceOp>()
     expectTypeOf<SessionEvent<'system/message'>['surfaceOp']>().toEqualTypeOf<SurfaceOp>()
     expectTypeOf<SurfaceIntent<'system/message'>['sourceEventSeqs']>().toEqualTypeOf<SessionSeq[] | undefined>()
