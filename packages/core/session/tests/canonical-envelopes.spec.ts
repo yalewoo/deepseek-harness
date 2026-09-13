@@ -319,7 +319,7 @@ describe('canonical event-local surface metadata', () => {
     expect(snapshotSessionEvent(event)).toEqual(event)
   })
 
-  it('requires surface intent on event variants and forbids assistant provenance in types', () => {
+  it('requires surface intent and permits assistant provenance only for replacements', () => {
     expectTypeOf<SurfaceEvent>().toEqualTypeOf<SessionEvent<SurfaceEventType>>()
     expectTypeOf<Omit<SessionEvent<'user/message'>, 'surfaceOp'>>().not.toExtend<SessionEvent<'user/message'>>()
     expectTypeOf<{ surfaceOp: 'append'; sourceEventSeqs: SessionSeq[] }>().not.toExtend<SurfaceIntent<'assistant/message'>>()
@@ -327,10 +327,14 @@ describe('canonical event-local surface metadata', () => {
     expectTypeOf<SessionEvent<'system/message'>['surfaceOp']>().toEqualTypeOf<SurfaceOp>()
     expectTypeOf<SurfaceIntent<'system/message'>['sourceEventSeqs']>().toEqualTypeOf<SessionSeq[] | undefined>()
     expectTypeOf<SessionEvent<'user/message'>['surfaceOp']>().toEqualTypeOf<SurfaceOp>()
-    expectTypeOf<SessionEvent<'assistant/message'>['sourceEventSeqs']>().toEqualTypeOf<undefined>()
+    expectTypeOf<SessionEvent<'assistant/message'>['sourceEventSeqs']>().toEqualTypeOf<SessionSeq[] | undefined>()
     expectTypeOf<SessionEvent<'turn/start'>['surfaceOp']>().toEqualTypeOf<undefined>()
     expectTypeOf<SessionEvent<'turn/start'>['sourceEventSeqs']>().toEqualTypeOf<undefined>()
-    expectTypeOf<SurfaceIntent<'assistant/message'>['sourceEventSeqs']>().toEqualTypeOf<undefined>()
+    expectTypeOf<SurfaceIntent<'assistant/message'>['sourceEventSeqs']>().toEqualTypeOf<SessionSeq[] | undefined>()
+    expectTypeOf<{
+      surfaceOp: { op: 'replace'; startSeq: SessionSeq; endSeq: SessionSeq }
+      sourceEventSeqs: SessionSeq[]
+    }>().toExtend<SurfaceIntent<'assistant/message'>>()
     expectTypeOf<Extract<SurfaceOp, { op: 'replace' }>['startSeq']>().toEqualTypeOf<SessionSeq>()
     expectTypeOf<Extract<SurfaceOp, { op: 'replace' }>['endSeq']>().toEqualTypeOf<SessionSeq>()
   })

@@ -11,9 +11,9 @@ import type {
 import type { FileUploadReceiptId } from '@deepseek-ai/dsh-client-file-upload/types'
 import type {} from '@deepseek-ai/dsh-client-file-upload'
 import {
-  ReasoningEffortId, assistantStreamChunks, createUserMessage, freezeMessage,
+  ReasoningEffortId, assistantStreamChunks, createAssistantMessage, createUserMessage, freezeMessage,
 } from '@deepseek-ai/dsh-llm'
-import type { MessageSource } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, MessageSource } from '@deepseek-ai/dsh-llm'
 import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 import {
@@ -55,6 +55,7 @@ import type {
   SessionUpdateQueueRequest,
   SessionUpdateQueueValue,
   SessionRequestId,
+  MessageVersionRecord,
 } from './types.ts'
 
 interface SessionReadState {
@@ -69,6 +70,23 @@ type PromptContentCandidate =
 
 function hasPromptContent(content: readonly PromptContentCandidate[]): boolean {
   return content.some(part => part.type !== 'text' || part.text.trim().length > 0)
+}
+
+function replaceTextContent(content: readonly ContentBlock[], text: string): ContentBlock[] {
+  const replaced: ContentBlock[] = []
+  let inserted = false
+  for (const block of content) {
+    if (block.type !== 'text') {
+      replaced.push(block)
+      continue
+    }
+    if (!inserted) {
+      replaced.push({ type: 'text', text })
+      inserted = true
+    }
+  }
+  if (!inserted) replaced.unshift({ type: 'text', text })
+  return replaced
 }
 
 /** Implements Session business commands delegated by the Session Controller Remote service. */
@@ -281,8 +299,23 @@ export class SessionCommandController {
         { sessionId: request.sessionId },
       )
     }
-    const mode = request.mode ?? 'through-turn'
+    if (request.version !== undefined && request.version.groupId.trim() === '') {
+      throw new RemoteError('gateway/bad-request', 'version groupId must not be blank', {})
+    }
+    if (request.version?.action !== undefined && request.version.action !== 'regenerate'
+      && (request.version.text === undefined || request.version.text.trim() === '')) {
+      throw new RemoteError('gateway/bad-request', 'edited message text must not be blank', {})
+    }
+    const mode = request.version?.action === 'regenerate'
+      ? 'rerun-turn'
+      : request.version?.action === 'user-edit'
+        ? 'before-turn'
+        : request.version?.action === 'assistant-edit'
+          ? 'through-turn'
+          : request.mode ?? 'through-turn'
     let replayMessage: UserMessage | undefined
+    let versionRecord: MessageVersionRecord | undefined
+    let assistantReplacement: Extract<SessionEvent, { type: 'assistant/message' }> | undefined
     let cut: ReturnType<typeof SessionLogOffset>
     if (mode === 'through-turn') {
       cut = SessionLogOffset(boundary.seq + 1)
@@ -299,7 +332,7 @@ export class SessionCommandController {
         )
       }
       cut = SessionLogOffset(turnStart.seq)
-      if (mode === 'rerun-turn') {
+      if (mode === 'rerun-turn' || request.version?.action === 'user-edit') {
         const replayEvent = source.events.find(event => event.type === 'user/message'
           && event.seq >= turnStart.seq && event.seq <= boundary.seq)
         if (replayEvent?.type === 'user/message') replayMessage = replayEvent.data
@@ -309,6 +342,12 @@ export class SessionCommandController {
             `session "${request.sessionId}" has no user message in the selected turn`,
             { sessionId: request.sessionId },
           )
+        }
+        if (request.version?.action === 'user-edit') {
+          replayMessage = createUserMessage({
+            content: replaceTextContent(replayMessage.content, request.version.text ?? ''),
+            source: { kind: 'user' },
+          })
         }
       }
     }
@@ -323,6 +362,37 @@ export class SessionCommandController {
       )
     }
     const childId = brandString<SessionId>(`session-${randomUUID()}`)
+    if (request.version !== undefined) {
+      const sourceEvent = request.version.action === 'assistant-edit'
+        ? source.events.find(event => event.seq === atSeq && event.type === 'assistant/message')
+        : source.events.find(event => event.type === 'user/message'
+          && event.seq <= boundary.seq
+          && event.data.id === replayMessage?.id)
+          ?? source.events.find(event => event.type === 'user/message'
+            && event.seq <= boundary.seq
+            && event.seq >= (source.events.findLast(candidate => candidate.type === 'turn/start'
+              && candidate.seq <= boundary.seq)?.seq ?? boundary.seq))
+      if (sourceEvent?.type !== (request.version.action === 'assistant-edit' ? 'assistant/message' : 'user/message')) {
+        throw new RemoteError('session/fork-unavailable', 'message version anchor does not identify the expected message', {
+          sessionId: request.sessionId,
+        })
+      }
+      const sourceMessageId = sourceEvent.type === 'assistant/message'
+        ? sourceEvent.data.message.id
+        : sourceEvent.data.id
+      versionRecord = {
+        groupId: request.version.groupId,
+        baseSessionId: request.version.baseSessionId,
+        variantSessionId: childId,
+        anchorTurn: boundary.data.turn,
+        sourceMessageId,
+        role: sourceEvent.type === 'assistant/message' ? 'assistant' : 'user',
+        kind: request.version.action,
+      }
+      if (request.version.action === 'assistant-edit' && sourceEvent.type === 'assistant/message') {
+        assistantReplacement = sourceEvent
+      }
+    }
     const composition = await this.agents.composeAgent(this.agents.presetForObservation(source))
     let childAgent: Agent
     try {
@@ -344,6 +414,28 @@ export class SessionCommandController {
       })
       childAgent = this.agents.retain(child)
       if (mode !== 'through-turn') childAgent.inbox.clear()
+      if (versionRecord !== undefined) {
+        childAgent.session.append('session/message-version', versionRecord, { ignorable: true })
+      }
+      if (assistantReplacement !== undefined) {
+        const { kind: _kind, ...assistantSource } = assistantReplacement.data.message.source
+        childAgent.session.append('assistant/message', {
+          turn: assistantReplacement.data.turn,
+          step: assistantReplacement.data.step,
+          stream: [],
+          message: createAssistantMessage({
+            content: replaceTextContent(assistantReplacement.data.message.content, request.version?.text ?? ''),
+            source: assistantSource,
+          }),
+        }, {
+          surfaceOp: {
+            op: 'replace',
+            startSeq: assistantReplacement.seq,
+            endSeq: assistantReplacement.seq,
+          },
+          sourceEventSeqs: [assistantReplacement.seq],
+        })
+      }
     } catch (error) {
       throw new RemoteError(
         'gateway/internal',

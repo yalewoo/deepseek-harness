@@ -20,6 +20,8 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
     imageLimits: null
     /** Durable model selection already used by a request and still pending for a later request. */
     modelSelection: ModelSelectionProjectionState
+    /** Message-version choices inherited by or created in this Session. */
+    messageVersions: readonly MessageVersionRecord[]
   }
   interface SessionProjectionMap {
     /** Persisted facts used to summarize a Session without activating it. */
@@ -28,6 +30,8 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
     imageLimits: ImageAttachmentLimits
     /** Durable model selection already used and selected for the next request. */
     modelSelection: ModelSelectionProjection
+    /** Message-version choices inherited by or created in this Session. */
+    messageVersions: readonly MessageVersionRecord[]
   }
 }
 
@@ -38,6 +42,8 @@ declare module '@deepseek-ai/dsh-session/types' {
      * assembly. Log-only: it never enters derived model history.
      */
     'model/selection': ModelSelection
+    /** UI provenance for an immutable Session derived as one message version. */
+    'session/message-version': MessageVersionRecord
   }
 }
 
@@ -103,6 +109,17 @@ export interface ModelSelectionProjection {
   readonly lastUsed: ModelSelection | null
   /** Selection the next request should use, falling back to {@link lastUsed}. */
   readonly next: ModelSelection | null
+}
+
+/** Durable provenance for one Session-backed message version. */
+export interface MessageVersionRecord {
+  readonly groupId: string
+  readonly baseSessionId: SessionId
+  readonly variantSessionId: SessionId
+  readonly anchorTurn: number
+  readonly sourceMessageId: MessageId
+  readonly role: 'user' | 'assistant'
+  readonly kind: 'regenerate' | 'user-edit' | 'assistant-edit'
 }
 
 /** One adapter-owned reasoning effort for an exact model route. */
@@ -313,6 +330,13 @@ export interface SessionForkRequest {
   readonly atSeq?: number
   /** Completed-turn boundary behavior; omitted preserves the legacy through-turn fork. */
   readonly mode?: 'through-turn' | 'before-turn' | 'rerun-turn'
+  /** Optional message-version operation; the Host derives and validates its anchor identity. */
+  readonly version?: {
+    readonly groupId: string
+    readonly baseSessionId: SessionId
+    readonly action: 'regenerate' | 'user-edit' | 'assistant-edit'
+    readonly text?: string
+  }
 }
 
 /** Identity of a newly forked Session. */

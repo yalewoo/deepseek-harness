@@ -271,7 +271,7 @@ function assertProvenance(
   shadowedSeqs: readonly SessionSeq[],
 ): void {
   const raw: unknown = event.sourceEventSeqs
-  if (event.type === 'assistant/message' && raw !== undefined) {
+  if (event.type === 'assistant/message' && event.surfaceOp === 'append' && raw !== undefined) {
     throw new Error('assistant/message embeds its source stream and cannot carry sourceEventSeqs')
   }
   const sources = new Set<SessionSeq>()

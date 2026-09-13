@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { agentEvents } from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentHandle, CreateAgentOptions } from '@deepseek-ai/dsh-agent'
-import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { createAssistantMessage, createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { LlmCallConfig } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { Session, SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
@@ -143,6 +143,121 @@ describe('sessions.fork', () => {
     expect(followup).toHaveBeenCalledWith(expect.objectContaining({
       content: [{ type: 'text', text: 'prompt 2' }],
     }))
+    await ctx.fiber.dispose()
+  })
+
+  it('records a regenerated reply as an ignorable message version', async () => {
+    const followup = vi.fn()
+    const ctx = await composed([], followup as Agent['followup'])
+    const source = liveAgent(ctx, 'session-source', 1)
+    const response = await remote(ctx).fork(request({
+      sessionId: source.id,
+      atSeq: 1,
+      version: {
+        groupId: 'version-group',
+        baseSessionId: source.id,
+        action: 'regenerate',
+      },
+    }))
+
+    expect(response.ok).toBe(true)
+    if (!response.ok) return
+    const child = ctx.sessions.get(response.value.sessionId)
+    expect(child?.snapshotEvents().find(event => event.type === 'session/message-version')).toMatchObject({
+      ignorable: true,
+      data: {
+        groupId: 'version-group',
+        baseSessionId: source.id,
+        variantSessionId: response.value.sessionId,
+        anchorTurn: 1,
+        role: 'user',
+        kind: 'regenerate',
+      },
+    })
+    expect(followup).toHaveBeenCalledOnce()
+    await ctx.fiber.dispose()
+  })
+
+  it('replays edited user text with non-text content preserved', async () => {
+    const followup = vi.fn()
+    const ctx = await composed([], followup as Agent['followup'])
+    const source = ctx.sessions.create(sid('session-source'), { meta: { cwd: '/proj' } })
+    const image = { type: 'image', attachment: {
+      id: 'attachment-1', mediaType: 'image/png', bytes: 10, width: 1, height: 1,
+    } } as const
+    source.append('turn/start', { turn: 1 })
+    const original = source.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'old text' }, image],
+      source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    source.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    ctx.agents.register({ id: source.id, session: source, status: 'idle', ctx } as Agent)
+
+    const response = await remote(ctx).fork(request({
+      sessionId: source.id,
+      atSeq: original.seq,
+      version: {
+        groupId: 'user-edit-group',
+        baseSessionId: source.id,
+        action: 'user-edit',
+        text: 'edited text',
+      },
+    }))
+
+    expect(response.ok).toBe(true)
+    expect(followup).toHaveBeenCalledWith(expect.objectContaining({
+      content: [{ type: 'text', text: 'edited text' }, image],
+    }))
+    await ctx.fiber.dispose()
+  })
+
+  it('replaces an assistant reply in the child model-visible history', async () => {
+    const ctx = await composed()
+    const source = ctx.sessions.create(sid('session-source'), { meta: { cwd: '/proj' } })
+    source.append('turn/start', { turn: 1 })
+    source.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'prompt' }], source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    source.append('step/start', { turn: 1, step: 1 })
+    const assistant = source.append('assistant/message', {
+      turn: 1,
+      step: 1,
+      stream: [],
+      message: createAssistantMessage({
+        content: [{ type: 'text', text: 'old reply' }],
+        source: { provider: 'fixture', model: 'fixture' },
+      }),
+    }, { surfaceOp: 'append' })
+    source.append('step/end', { turn: 1, step: 1 })
+    source.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    ctx.agents.register({ id: source.id, session: source, status: 'idle', ctx } as Agent)
+
+    const response = await remote(ctx).fork(request({
+      sessionId: source.id,
+      atSeq: assistant.seq,
+      version: {
+        groupId: 'assistant-edit-group',
+        baseSessionId: source.id,
+        action: 'assistant-edit',
+        text: 'edited reply',
+      },
+    }))
+
+    expect(response.ok ? null : response.error).toBeNull()
+    if (!response.ok) return
+    const child = ctx.sessions.get(response.value.sessionId)
+    expect(child?.deriveMessages().map(message => message.content)).toEqual([
+      [{ type: 'text', text: 'prompt' }],
+      [{ type: 'text', text: 'edited reply' }],
+    ])
+    const replacement = child?.snapshotEvents().at(-1)
+    expect(replacement).toMatchObject({
+      type: 'assistant/message',
+      surfaceOp: { op: 'replace', startSeq: assistant.seq, endSeq: assistant.seq },
+    })
+    if (replacement?.type === 'assistant/message') {
+      expect(replacement.data.message.id).not.toBe(assistant.data.message.id)
+    }
     await ctx.fiber.dispose()
   })
 
