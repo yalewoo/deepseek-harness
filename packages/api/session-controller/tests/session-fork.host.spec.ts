@@ -138,6 +138,27 @@ describe('sessions.fork', () => {
     await ctx.fiber.dispose()
   })
 
+  it('attaches the fork before replaying the selected user message', async () => {
+    const order: string[] = []
+    const sourceId = sid('session-source')
+    const workspace = {
+      id: 'workspace-1',
+      sessionIds: [sourceId],
+      attachSession: async () => { order.push('attach') },
+    } as unknown as Workspace
+    const ctx = await composed([workspace], () => { order.push('replay') })
+    const source = liveAgent(ctx, 'session-source', 1)
+
+    const response = await remote(ctx).fork(request({
+      sessionId: source.id,
+      mode: 'rerun-turn',
+    }))
+
+    expect(response.ok).toBe(true)
+    expect(order).toEqual(['attach', 'replay'])
+    await ctx.fiber.dispose()
+  })
+
   it('attaches a subagent fork to its nearest workspace-owning ancestor', async () => {
     const accounted: SessionId[] = []
     const attachSession = vi.fn<(sessionId: SessionId) => Promise<void>>()

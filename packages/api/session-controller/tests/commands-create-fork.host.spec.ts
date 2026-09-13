@@ -24,6 +24,7 @@ function controllerAgents(overrides: object = {}): ApiSessionAgentController {
     composeAgent: () => Promise.resolve({ setup: () => {} }),
     presetForSession: () => undefined,
     presetForObservation: () => undefined,
+    retain: (handle: AgentHandle) => handle.agent,
     ...overrides,
   } as unknown as ApiSessionAgentController
 }
@@ -310,12 +311,15 @@ describe('Session fork failures', () => {
     const create = vi.spyOn(ctx.agents, 'create').mockImplementation(
       (options: CreateAgentOptions) => Promise.resolve(resolvedHandle(ctx, options.sessionId)),
     )
+    const retain = vi.fn((handle: AgentHandle) => handle.agent)
     const controller = new SessionCommandController(ctx, controllerAgents({
       composeAgent: () => Promise.resolve({ agentPreset: 'minimal', setup: () => {} }),
+      retain,
     }), '/default')
 
     const forked = await controller.fork({ sessionId: source.id })
     expect(forked.sessionId).toMatch(/^session-/)
+    expect(retain).toHaveBeenCalledOnce()
     const options = create.mock.calls[0]?.[0]
     if (options === undefined) throw new Error('Agent creation was not attempted')
     expect(options.meta?.agentPreset).toBe('minimal')

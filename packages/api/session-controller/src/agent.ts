@@ -379,6 +379,16 @@ export class ApiSessionAgentController {
     return result
   }
 
+  /**
+   * Retain a newly created ordinary Agent under the Session Controller lifecycle.
+   * @param handle - Agent handle created for a Session Controller operation.
+   * @returns the retained live Agent.
+   */
+  retain(handle: AgentHandle): Agent {
+    this.handles.set(handle.agent.id, handle)
+    return handle.agent
+  }
+
   /** Stop this controller's live Agent, then permanently remove its stored Session. */
   deleteSession(sessionId: SessionId): Promise<void> {
     const active = this.deletions.get(sessionId)
@@ -534,11 +544,6 @@ export class ApiSessionAgentController {
       },
       setup: composition.setup,
     }))
-  }
-
-  private retain(handle: AgentHandle): Agent {
-    this.handles.set(handle.agent.id, handle)
-    return handle.agent
   }
 
   private agentOptions(): AgentOptions {

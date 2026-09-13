@@ -324,6 +324,7 @@ export class SessionCommandController {
     }
     const childId = brandString<SessionId>(`session-${randomUUID()}`)
     const composition = await this.agents.composeAgent(this.agents.presetForObservation(source))
+    let childAgent: Agent
     try {
       const { provider, model } = this.ctx.agentDefaultModel.currentSelection()
       const child = await this.ctx.agents.create({
@@ -341,7 +342,7 @@ export class SessionCommandController {
         agentOptions: { provider, model },
         setup: composition.setup,
       })
-      if (replayMessage !== undefined) child.agent.followup(replayMessage)
+      childAgent = this.agents.retain(child)
     } catch (error) {
       throw new RemoteError(
         'gateway/internal',
@@ -360,6 +361,7 @@ export class SessionCommandController {
         )
       }
     }
+    if (replayMessage !== undefined) childAgent.followup(replayMessage)
     return { sessionId: childId }
   }
 

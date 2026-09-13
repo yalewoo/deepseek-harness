@@ -37,6 +37,8 @@ Session 对象还承载本地提交回显：`session.beginSubmission` 在调用�
 
 面向用户调用的 `skills/list` 元数据包含胜出提供方可选的指令文件 `path`。输入框可据此预览文件，无需加载每个 skill 的正文或激活冷态 Agent。
 
+fork 会先把新的普通 Agent 交由 Session Controller 保留，再将其暴露给其他生命周期操作。重放型 fork 会先完成目标 Workspace 挂接，再接纳选中的用户消息；挂接失败时直接返回，不唤醒 child。
+
 <a id="session-media-references"></a>
 ## 会话媒体引用
 
