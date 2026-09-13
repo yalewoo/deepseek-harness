@@ -155,6 +155,46 @@ describe('WorkspaceBrowser', () => {
     })
   })
 
+  it('selects and archives every normal conversation, including folded rows', async () => {
+    const archiveSession = vi.fn(async () => {})
+    const items = Array.from({ length: 7 }, (_, index) => summary(`session-${index + 1}`, 7 - index))
+    mount({
+      useSessions: hook(sessionState(items)),
+      useWorkspaces: hook(workspaceState([workspace('alpha', items.map(item => item.id))])),
+      archiveSession,
+    })
+
+    fireEvent.click(screen.getByRole('checkbox', { name: '全选会话' }))
+    expect(screen.getByText('已选择 7 项')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '存档所选' }))
+
+    await waitFor(() => {
+      expect(archiveSession).toHaveBeenCalledTimes(7)
+      for (const item of items) expect(archiveSession).toHaveBeenCalledWith(item.id)
+    })
+    expect(screen.getByText('已选择 0 项')).toBeTruthy()
+  })
+
+  it('keeps only failed batch-archive sessions selected for retry', async () => {
+    const archiveSession = vi.fn(async (id: SessionId) => {
+      if (id === sid('session-two')) throw new Error('busy')
+    })
+    mount({
+      useSessions: hook(sessionState([summary('session-one', 2), summary('session-two', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['session-one', 'session-two'])])),
+      archiveSession,
+    })
+
+    fireEvent.click(screen.getByRole('checkbox', { name: '全选会话' }))
+    fireEvent.click(screen.getByRole('button', { name: '存档所选' }))
+
+    expect(await screen.findByText('1 个会话归档失败，请重试。')).toBeTruthy()
+    expect(screen.getByText('已选择 1 项')).toBeTruthy()
+    fireEvent.click(screen.getByText('alpha'))
+    expect((screen.getByRole('checkbox', { name: '选择会话“session-one”' }) as HTMLInputElement).checked).toBe(false)
+    expect((screen.getByRole('checkbox', { name: '选择会话“session-two”' }) as HTMLInputElement).checked).toBe(true)
+  })
+
   it('moves focus into Workspace controls without selecting a Session while a main panel is active', () => {
     const panelInfo = { activePanelId: 'panel-a' as MainPanelId }
     const b = mount({

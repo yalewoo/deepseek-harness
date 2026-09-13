@@ -264,6 +264,10 @@ type SessionTreeProps = Pick<
   onSessionRename: (sessionId: SessionNode['id'], currentTitle: string) => void
   /** Archive a session (row menu action; the row disappears on the state echo). */
   onSessionArchive: (sessionId: SessionNode['id']) => void
+  /** Sessions selected for a batch archive. */
+  selectedSessionIds: readonly SessionId[]
+  /** Update one Session's batch-selection state. */
+  onSessionCheckedChange: (sessionId: SessionId, checked: boolean) => void
   /** Session order behavior: fixed after edits, or additionally promoted by user activity. */
   orderBy: SessionOrderBy
   /** One Session chosen from search that must be exposed and scrolled into view. */
@@ -277,6 +281,7 @@ function SessionTree({
   useSessions, useSessionPendingInteraction, startSession, open, forkSession, workspaces, archivedSessionIds,
   workspaceReady, usePanelInfo,
   onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive,
+  selectedSessionIds, onSessionCheckedChange,
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
   sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, home, t,
@@ -588,6 +593,10 @@ function SessionTree({
                     onRename={onSessionRename}
                     onFork={forkSession}
                     onArchive={onSessionArchive}
+                    checked={node.blank ? undefined : selectedSessionIds.includes(node.id)}
+                    onCheckedChange={node.blank
+                      ? undefined
+                      : (checked) => { onSessionCheckedChange(node.id, checked) }}
                     onReveal={node.id === revealSessionId && group.key === revealGroup
                       ? () => { onSessionRevealed(node.id) }
                       : undefined}
@@ -620,7 +629,7 @@ function SessionTree({
 /** The flat "In one list" body: every session is one draggable top-level row. */
 function FlatList({
   useSessions, useSessionPendingInteraction, open, forkSession, onSessionRename, onSessionArchive,
-  archivedSessionIds, usePanelInfo,
+  selectedSessionIds, onSessionCheckedChange, archivedSessionIds, usePanelInfo,
   orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder,
   revealSessionId, onSessionRevealed, t,
 }: Pick<
@@ -631,6 +640,8 @@ function FlatList({
   | 'forkSession'
   | 'onSessionRename'
   | 'onSessionArchive'
+  | 'selectedSessionIds'
+  | 'onSessionCheckedChange'
   | 'archivedSessionIds'
   | 'usePanelInfo'
   | 'orderBy'
@@ -715,6 +726,10 @@ function FlatList({
               onRename={onSessionRename}
               onFork={forkSession}
               onArchive={onSessionArchive}
+              checked={node.blank ? undefined : selectedSessionIds.includes(node.id)}
+              onCheckedChange={node.blank
+                ? undefined
+                : (checked) => { onSessionCheckedChange(node.id, checked) }}
               onReveal={node.id === revealSessionId
                 ? () => { onSessionRevealed(node.id) }
                 : undefined}
@@ -946,6 +961,41 @@ export function WorkspaceBrowser({
   const workspaceStreamState = useWorkspaces(state => state.state)
   const archivedSessionIds = useWorkspaces(state => state.archivedSessionIds)
   const [archiveView, setArchiveView] = useState(false)
+  const sessionList = useSessions(state => state)
+  const activeSessionIds = useMemo(() => {
+    const archived = new Set(archivedSessionIds)
+    return sessionList.ids.filter((id) => {
+      const session = sessionList.byId[id]
+      return session !== undefined && session.origin !== 'subagent' && !session.blank && !archived.has(id)
+    })
+  }, [archivedSessionIds, sessionList])
+  const [selectedSessionIds, setSelectedSessionIds] = useState<readonly SessionId[]>([])
+  const [sessionArchiving, setSessionArchiving] = useState(false)
+  const [sessionArchiveError, setSessionArchiveError] = useState<string | null>(null)
+  useEffect(() => {
+    const available = new Set(activeSessionIds)
+    setSelectedSessionIds(current => current.filter(id => available.has(id)))
+  }, [activeSessionIds])
+  const activeSessionsAllSelected = activeSessionIds.length > 0
+    && selectedSessionIds.length === activeSessionIds.length
+  const onSessionCheckedChange = (sessionId: SessionId, checked: boolean): void => {
+    setSelectedSessionIds(current => checked
+      ? current.includes(sessionId) ? current : [...current, sessionId]
+      : current.filter(id => id !== sessionId))
+    setSessionArchiveError(null)
+  }
+  const archiveSelectedSessions = (): void => {
+    if (sessionArchiving || selectedSessionIds.length === 0) return
+    const targets = selectedSessionIds
+    setSessionArchiving(true)
+    setSessionArchiveError(null)
+    void Promise.allSettled(targets.map(id => archiveSession(id))).then((results) => {
+      const failed = targets.filter((_id, index) => results[index]?.status === 'rejected')
+      setSessionArchiving(false)
+      setSelectedSessionIds(failed)
+      setSessionArchiveError(failed.length === 0 ? null : t('archive.archiveFailed', { n: failed.length }))
+    })
+  }
   // Live occupancy of this surface's directory-flow hole (the same source the
   // flow reads): a composition without a picking affordance can add nothing.
   const directoryFlowAvailable = useDirectoryFlow(occupied => occupied)
@@ -1387,6 +1437,37 @@ export function WorkspaceBrowser({
       {/* Always-mounted seat keeps the region's flex slot while the list
           itself is wide-only. */}
       <div className={css.listArea}>
+        {wide && !archiveView && normalizedQuery === '' && activeSessionIds.length > 0 && (
+          <>
+            <div className={css.archiveToolbar}>
+              <label className={css.archiveSelectAll}>
+                <input
+                  type="checkbox"
+                  checked={activeSessionsAllSelected}
+                  disabled={sessionArchiving}
+                  aria-label={t('archive.selectActiveAll')}
+                  onChange={(event) => {
+                    setSelectedSessionIds(event.target.checked ? activeSessionIds : [])
+                    setSessionArchiveError(null)
+                  }}
+                />
+                <span>{t('archive.selected', { n: selectedSessionIds.length })}</span>
+              </label>
+              <button
+                type="button"
+                className={css.sessionArchiveButton}
+                disabled={sessionArchiving || selectedSessionIds.length === 0}
+                onClick={archiveSelectedSessions}
+              >
+                <IconArchiveOutline20 size={16} />
+                <span>{sessionArchiving ? t('archive.archiving') : t('archive.archiveSelected')}</span>
+              </button>
+            </div>
+            {sessionArchiveError !== null && (
+              <div className={css.archiveBatchError} role="status">{sessionArchiveError}</div>
+            )}
+          </>
+        )}
         {wide && (archiveView
           ? (
             <ArchivedList
@@ -1422,6 +1503,8 @@ export function WorkspaceBrowser({
                   useSessions={useSessions} useSessionPendingInteraction={useSessionPendingInteraction}
                   open={open} forkSession={forkSession}
                   onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
+                  selectedSessionIds={selectedSessionIds}
+                  onSessionCheckedChange={onSessionCheckedChange}
                   archivedSessionIds={archivedSessionIds}
                   orderBy={orderBy}
                   sessionOrderByAccount={sessionOrderByAccount}
@@ -1440,6 +1523,8 @@ export function WorkspaceBrowser({
                   useSessionPendingInteraction={useSessionPendingInteraction}
                   onSessionRename={onSessionRename}
                   onSessionArchive={onSessionArchive}
+                  selectedSessionIds={selectedSessionIds}
+                  onSessionCheckedChange={onSessionCheckedChange}
                   forkSession={forkSession}
                   workspaces={workspaces}
                   workspaceReady={workspacePhase === 'ready' && workspaceStreamState !== 'loading'}

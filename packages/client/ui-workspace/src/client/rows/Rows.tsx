@@ -370,6 +370,8 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @param props.onRename - open the session rename dialog (id + current title).
  * @param props.onFork - fork a session at its last completed turn.
  * @param props.onArchive - archive a session by id.
+ * @param props.checked - batch-selection state; omit to hide the checkbox.
+ * @param props.onCheckedChange - update batch-selection state.
  * @param props.onReveal - scroll this row into view after search navigation, then acknowledge it.
  * @param props.drag - optional draggable-row wiring.
  * @param props.flat - omit the empty status slot in the hierarchy-free flat list.
@@ -377,7 +379,8 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @returns the session row.
  */
 export function SessionNodeItem({
-  node, currentId, now, onOpen, onRename, onFork, onArchive, onReveal, drag, flat = false, t,
+  node, currentId, now, onOpen, onRename, onFork, onArchive,
+  checked, onCheckedChange, onReveal, drag, flat = false, t,
 }: {
   node: SessionNode
   currentId: string | undefined
@@ -389,6 +392,10 @@ export function SessionNodeItem({
   onFork: (id: SessionNode['id']) => void
   /** Archive this session (row menu action; commits without a dialog). */
   onArchive: (id: SessionNode['id']) => void
+  /** Batch-selection state; omit to hide the checkbox. */
+  checked?: boolean | undefined
+  /** Update batch-selection state. */
+  onCheckedChange?: ((checked: boolean) => void) | undefined
   /** Scroll this row into view after search navigation, then acknowledge it. */
   onReveal?: (() => void) | undefined
   /** Present only on draggable rows (workspace-group sessions outside search). */
@@ -456,6 +463,16 @@ export function SessionNodeItem({
           drag.drop(rowHalf(e))
         }}
     >
+      {checked !== undefined && onCheckedChange !== undefined && (
+        <input
+          className={css.sessionCheckbox}
+          type="checkbox"
+          checked={checked}
+          aria-label={t('archive.selectOne', { name: title })}
+          onClick={(event) => { event.stopPropagation() }}
+          onChange={(event) => { onCheckedChange(event.target.checked) }}
+        />
+      )}
       {/* Pending interaction and own or descendant activity outrank the
           finished-but-unviewed reminder, which returns after activity stops
           and is cleared by opening the session. */}
@@ -536,7 +553,7 @@ export function ArchivedSessionItem({
       onClick={() => { onOpen(node.id) }}
     >
       <input
-        className={css.archiveCheckbox}
+        className={css.sessionCheckbox}
         type="checkbox"
         checked={checked}
         aria-label={t('archive.selectOne', { name: title })}
